@@ -21,7 +21,7 @@ this process.
 
 ### PR validation
 
-The following GitHub Actions workflow can be used to automatically handle common 
+The following GitHub Actions workflow can be used to automatically handle common
 incoming log PRs.
 
 Create a `.github/workflows/serverless_pr.yaml` file with the following config:
@@ -96,7 +96,7 @@ Be sure to replace the `origin:` value with a unique string which identifies
 your log.
 
 > :shipit: Note that it expects a pair of GitHub secrets called
-`SERVERLESS_LOG_PRIVATE_KEY` and `SERVERLESS_LOG_PUBLIC_KEY` to exist, see 
+`SERVERLESS_LOG_PRIVATE_KEY` and `SERVERLESS_LOG_PUBLIC_KEY` to exist, see
 the [GitHub secrets docs](https://docs.github.com/en/actions/reference/encrypted-secrets#creating-encrypted-secrets-for-a-repository)
 for details on how to do this.
 
@@ -145,7 +145,7 @@ To try it out:
 2. Create your own log key pair, using the `generate_keys` tool, add the generated keys
    to your Github repo's secrets as `SERVERLESS_LOG_PUBLIC_KEY` and
    `SERVERLESS_LOG_PRIVATE_KEY`.
-2. Initialise the log state:
+3. Initialise the log state:
     1. we'll use a directory called `log` in our repo to
        store the state files
     2. run the `integrate` tool with the `--initialise` flag:
@@ -157,9 +157,9 @@ To try it out:
        git commit -m "Initialise my log"
        ```
 
-3. Place the above github action configs into the `.github/workflows` directory in
+4. Place the above github action configs into the `.github/workflows` directory in
    your log repo, and commit that too.
-4. Push these commits up to github.
+5. Push these commits up to github.
 
 Now you can raise "pending leaf" PRs which drop files into the
 `log/leaves/pending` directory, whereupon the `Validate pending leaves` action
