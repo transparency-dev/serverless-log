@@ -33,9 +33,9 @@ import (
 	"strings"
 	"syscall/js"
 
-	"github.com/google/trillian-examples/serverless/api"
-	"github.com/google/trillian-examples/serverless/api/layout"
-	"github.com/google/trillian-examples/serverless/pkg/log"
+	"github.com/transparency-dev/serverless/api"
+	"github.com/transparency-dev/serverless/api/layout"
+	"github.com/transparency-dev/serverless/pkg/log"
 
 	fmtlog "github.com/transparency-dev/formats/log"
 )

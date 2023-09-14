@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/golang/glog"
-	"github.com/google/trillian-examples/serverless/client"
 	"github.com/transparency-dev/formats/log"
+	"github.com/transparency-dev/serverless/client"
 	"golang.org/x/mod/sumdb/note"
 )
 

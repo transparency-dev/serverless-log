@@ -24,12 +24,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/google/trillian-examples/serverless/internal/storage/fs"
+	"github.com/transparency-dev/serverless/internal/storage/fs"
 	"golang.org/x/mod/sumdb/note"
 
 	"github.com/golang/glog"
-	"github.com/google/trillian-examples/serverless/pkg/log"
 	"github.com/transparency-dev/merkle/rfc6962"
+	"github.com/transparency-dev/serverless/pkg/log"
 
 	fmtlog "github.com/transparency-dev/formats/log"
 )

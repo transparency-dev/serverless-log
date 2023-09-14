@@ -23,12 +23,12 @@ import (
 	"os"
 
 	"github.com/golang/glog"
-	"github.com/google/trillian-examples/serverless/api"
-	"github.com/google/trillian-examples/serverless/api/layout"
-	"github.com/google/trillian-examples/serverless/client"
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/compact"
+	"github.com/transparency-dev/serverless/api"
+	"github.com/transparency-dev/serverless/api/layout"
+	"github.com/transparency-dev/serverless/client"
 )
 
 // Storage represents the set of functions needed by the log tooling.

@@ -81,7 +81,7 @@ jobs:
       # own validator action specific to the type of contents your log should contain.
       - name: Leaf validator step
         id: leaf_validator
-        uses: google/trillian-examples/serverless/deploy/github/log/leaf_validator@HEAD
+        uses: transparency-dev/serverless/deploy/github/log/leaf_validator@HEAD
         with:
           log_dir: '${{ env.LOG_ROOT }}'
 ```
@@ -113,7 +113,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Sequence and integrate step
       id: sequence_and_integrate
-      uses: google/trillian-examples/serverless/deploy/github/log/sequence_and_integrate@master
+      uses: transparency-dev/serverless/deploy/github/log/sequence_and_integrate@master
       with:
         log_dir: './log'
         origin: '<Log identifier>'

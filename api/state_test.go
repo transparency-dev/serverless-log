@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/trillian-examples/serverless/api"
+	"github.com/transparency-dev/serverless/api"
 )
 
 func TestNodeKey(t *testing.T) {

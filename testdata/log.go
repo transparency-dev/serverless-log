@@ -23,8 +23,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/google/trillian-examples/serverless/api/layout"
-	"github.com/google/trillian-examples/serverless/client"
+	"github.com/transparency-dev/serverless/api/layout"
+	"github.com/transparency-dev/serverless/client"
 	"golang.org/x/mod/sumdb/note"
 )
 

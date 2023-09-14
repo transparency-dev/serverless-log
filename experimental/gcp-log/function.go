@@ -29,7 +29,7 @@ import (
 	"google.golang.org/api/iterator"
 
 	"github.com/gcp_serverless_module/internal/storage"
-	"github.com/google/trillian-examples/serverless/pkg/log"
+	"github.com/transparency-dev/serverless/pkg/log"
 
 	fmtlog "github.com/transparency-dev/formats/log"
 )

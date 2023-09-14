@@ -28,12 +28,12 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/google/trillian-examples/serverless/api"
-	"github.com/google/trillian-examples/serverless/api/layout"
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/compact"
 	"github.com/transparency-dev/merkle/proof"
+	"github.com/transparency-dev/serverless/api"
+	"github.com/transparency-dev/serverless/api/layout"
 	"golang.org/x/mod/sumdb/note"
 )
 
