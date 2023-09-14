@@ -2,17 +2,23 @@
 
 This is some experimental tooling which allows for the maintenance and querying
 of a log represented by tiles & files. These tools are built upon components
-from the Trillian repo (e.g. compact ranges), but *do not* use the Trillian Log
-service itself.
+from the transparency-dev repos (e.g. compact ranges from the
+[merkle repo](https://github.com/transparency-dev/merkle)), but *do not* use
+the Trillian Log service.
 
-The idea is to make logging infrastructure a bit more *nix like, and demonstrate
-how to use those tools in conjunction with GitHub actions, GCP Cloud Functions,
-AWS Lambda, etc. to deploy and maintain "serverless" transparency logs.
+The idea is to make logging infrastructure which is a bit more *nix like, and
+demonstrate how to use those tools in conjunction with GitHub actions, GCP Cloud
+Functions, AWS Lambda, etc. to deploy and maintain "serverless" transparency logs.
 
 The on-disk structure of the log is well defined, and can directly be made
 public via HTTP[S]. Clients wishing to be convinced of consistency/inclusion are
 responsible for constructing the proofs themselves by fetching the tiles
 containing the required nodes.
+
+It's important to note that this serverless log tooling is not meant to compete
+with Trillian, but complement it by providing a lower cost, lower complexity
+option for use-cases where Trillian's write-throughput scalability is not a
+requirement.
 
 ## Command-line tools usage
 
