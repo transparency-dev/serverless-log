@@ -1,6 +1,6 @@
 module github.com/transparency-dev/serverless-log
 
-go 1.21.0
+go 1.20
 
 require (
 	github.com/golang/glog v1.1.2
