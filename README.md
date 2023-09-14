@@ -1,5 +1,4 @@
-Serverless Log
-===============
+# Serverless Log
 
 This is some experimental tooling which allows for the maintenance and querying
 of a log represented by tiles & files. These tools are built upon components
@@ -15,15 +14,15 @@ public via HTTP[S]. Clients wishing to be convinced of consistency/inclusion are
 responsible for constructing the proofs themselves by fetching the tiles
 containing the required nodes.
 
-Command-line tools usage
-------------------------
+## Command-line tools usage
 
 A few tools are provided for manipulating the on-disk log state:
- - `sequence` this assigns sequence numbers to new entries
- - `integrate` this integrates any as-yet un-integrated sequence numbers into
+
+- `sequence` this assigns sequence numbers to new entries
+- `integrate` this integrates any as-yet un-integrated sequence numbers into
    the log state
- - `client` this provides log proof verification
- - `generate_keys` creates the public/private key pair for signing and
+- `client` this provides log proof verification
+- `generate_keys` creates the public/private key pair for signing and
    validating the log checkpoints
 
 Examples of how to use the tools are given below, they assume that a `${LOG_DIR}`
@@ -31,44 +30,46 @@ environment variable has been set to the desired path and directory name which
 should contain the log state files, e.g.:
 
 ```bash
-$ export LOG_DIR="/tmp/mylog"
-$ export LOG_ORIGIN="My Log"
+export LOG_DIR="/tmp/mylog"
+export LOG_ORIGIN="My Log"
 ```
 
 `sequence` and `client` require the log public key to be provided.
 
-This is supplied by providing the path to the key file using `--public_key` 
+This is supplied by providing the path to the key file using `--public_key`
 or by setting the `SERVERLESS_LOG_PUBLIC_KEY` environment variable
 
 `integrate` requires the log public and private keys to be provided.
 
-These are supplied by providing the path to the key files using 
+These are supplied by providing the path to the key files using
 `--public_key` and `--private_key` or by setting the
  `SERVERLESS_LOG_PUBLIC_KEY` and `SERVERLESS_LOG_PRIVATE_KEY` environment variables.
 
-
 ### Generating keys
-To create a new private key pair, use the `generate_keys` command with `--key_name`, a name 
-for the signing entity. You can output the public and private keys to files using   
-`--out_pub` path and filename for the public key,     
-`--out_priv` path and filename for the private key   
+
+To create a new private key pair, use the `generate_keys` command with `--key_name`, a name
+for the signing entity. You can output the public and private keys to files using
+`--out_pub` path and filename for the public key,
+`--out_priv` path and filename for the private key
 and stdout, private key, then public key, over 2 lines, using `--print`
 
 ```bash
-$ go run ./cmd/generate_keys --key_name=astra --out_pub=key.pub --out_priv=key
+go run ./cmd/generate_keys --key_name=astra --out_pub=key.pub --out_priv=key
 ```
 
 ### Creating a new log
+
 To create a new log state directory, use the `integrate` command with the `--initialise`
 flag, and either passing key files or with environment variables set:
 
 ```bash
-$ go run ./cmd/integrate --initialise --storage_dir="${LOG_DIR}" --logtostderr --public_key=key.pub --private_key=key --origin="${LOG_ORIGIN}"
+go run ./cmd/integrate --initialise --storage_dir="${LOG_DIR}" --logtostderr --public_key=key.pub --private_key=key --origin="${LOG_ORIGIN}"
 ```
 
 ### Sequencing entries into a log
+
 To add the contents of some files to a log, use the `sequence` command with the
-`--entries` flag set to a filename glob of files to add and either passing the public key 
+`--entries` flag set to a filename glob of files to add and either passing the public key
 file or with the environment variable set:
 
 ```bash
@@ -102,9 +103,10 @@ sequence number of 2.
 > a best-effort anti-spam mitigation.
 
 ### Integrating sequenced entries
+
 Although the entries we've added above are now assigned positions in the log, we
 still need to update the proof structure state to integrate these new entries.
-We use the `integrate` tool for that, again either passing key files or with the 
+We use the `integrate` tool for that, again either passing key files or with the
 environment variables set:
 
 ```bash
@@ -160,6 +162,7 @@ exit status 1
 > ```bash
 > $ busybox httpd -f -p 8000 -h ${LOG_DIR}
 > ```
+>
 > and in another terminal:
 >
 > ```bash
@@ -168,8 +171,7 @@ exit status 1
 > I0413 17:25:05.801354 4163606 client.go:119] Inclusion verified in tree size 3, with root 0x615a21da1739d901be4b1b44aed9cfcfdc044d18842f554a381bba4bff687aff
 > ```
 
-Hosting serverless logs
---------------------------------------
+## Hosting serverless logs
 
 In many cases we'd like to outsource the job of hosting our log to a third
 party. There are many possibile ways to do this, one is to use GitHub as both
@@ -179,12 +181,11 @@ of updating the log state.
 For more details, including example GitHub Action configs, see
 [here](./deploy/github).
 
-TODO
-----
+## TODO
 
- - [X] Document structure, design, etc.
- - [X] Integration test.
- - [X] Update client to be able to read tree data from the filesystem via HTTP.
- - [X] Implement & document GitHub actions components.
- - [X] Support for squashing dupes.
- - [ ] Maybe add configs/examples/docs for Cloud Functions, etc. too.
+- [X] Document structure, design, etc.
+- [X] Integration test.
+- [X] Update client to be able to read tree data from the filesystem via HTTP.
+- [X] Implement & document GitHub actions components.
+- [X] Support for squashing dupes.
+- [ ] Maybe add configs/examples/docs for Cloud Functions, etc. too.
