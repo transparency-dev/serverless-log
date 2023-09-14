@@ -30,9 +30,9 @@ import (
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
-	"github.com/transparency-dev/serverless/client"
-	"github.com/transparency-dev/serverless/internal/storage/fs"
-	"github.com/transparency-dev/serverless/pkg/log"
+	"github.com/transparency-dev/serverless-log/client"
+	"github.com/transparency-dev/serverless-log/internal/storage/fs"
+	"github.com/transparency-dev/serverless-log/pkg/log"
 	"golang.org/x/mod/sumdb/note"
 
 	fmtlog "github.com/transparency-dev/formats/log"

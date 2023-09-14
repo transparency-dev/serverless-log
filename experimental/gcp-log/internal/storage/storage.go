@@ -26,9 +26,9 @@ import (
 	"strconv"
 
 	"github.com/golang/glog"
-	"github.com/transparency-dev/serverless/api"
-	"github.com/transparency-dev/serverless/api/layout"
-	"github.com/transparency-dev/serverless/pkg/log"
+	"github.com/transparency-dev/serverless-log/api"
+	"github.com/transparency-dev/serverless-log/api/layout"
+	"github.com/transparency-dev/serverless-log/pkg/log"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/transparency-dev/serverless/client"
+	"github.com/transparency-dev/serverless-log/client"
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/sync/errgroup"
 

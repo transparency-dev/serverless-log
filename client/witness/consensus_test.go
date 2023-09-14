@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/transparency-dev/formats/log"
-	"github.com/transparency-dev/serverless/client"
+	"github.com/transparency-dev/serverless-log/client"
 	"golang.org/x/mod/sumdb/note"
 )
 

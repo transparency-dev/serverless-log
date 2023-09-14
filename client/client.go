@@ -32,8 +32,8 @@ import (
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/compact"
 	"github.com/transparency-dev/merkle/proof"
-	"github.com/transparency-dev/serverless/api"
-	"github.com/transparency-dev/serverless/api/layout"
+	"github.com/transparency-dev/serverless-log/api"
+	"github.com/transparency-dev/serverless-log/api/layout"
 	"golang.org/x/mod/sumdb/note"
 )
 

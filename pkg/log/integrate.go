@@ -26,9 +26,9 @@ import (
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/compact"
-	"github.com/transparency-dev/serverless/api"
-	"github.com/transparency-dev/serverless/api/layout"
-	"github.com/transparency-dev/serverless/client"
+	"github.com/transparency-dev/serverless-log/api"
+	"github.com/transparency-dev/serverless-log/api/layout"
+	"github.com/transparency-dev/serverless-log/client"
 )
 
 // Storage represents the set of functions needed by the log tooling.

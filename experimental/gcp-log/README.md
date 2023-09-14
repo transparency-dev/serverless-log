@@ -26,7 +26,7 @@ Both functions are HTTP-triggered and run when their respective endpoints are re
 ### GCF function deployment
 
 1. Generate a set of public and private keys following
-    [these](https://github.com/transparency-dev/serverless/tree/master/serverless#generating-keys)
+    [these](https://github.com/transparency-dev/serverless-log/tree/master/serverless#generating-keys)
     instructions and set them as the `PUBLIC_KEY` and `PRIVATE_KEY`.
 1. Set `PROJECT_NAME` as the name of your GCP project (string, not number).
 1. Deploy the Integrate function:

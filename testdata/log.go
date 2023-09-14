@@ -23,8 +23,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/transparency-dev/serverless/api/layout"
-	"github.com/transparency-dev/serverless/client"
+	"github.com/transparency-dev/serverless-log/api/layout"
+	"github.com/transparency-dev/serverless-log/client"
 	"golang.org/x/mod/sumdb/note"
 )
 

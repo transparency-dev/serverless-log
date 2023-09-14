@@ -1,4 +1,4 @@
-module github.com/transparency-dev/serverless
+module github.com/transparency-dev/serverless-log
 
 go 1.21.0
 

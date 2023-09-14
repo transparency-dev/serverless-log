@@ -25,7 +25,7 @@ import (
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle/compact"
 	"github.com/transparency-dev/merkle/rfc6962"
-	"github.com/transparency-dev/serverless/api"
+	"github.com/transparency-dev/serverless-log/api"
 )
 
 var (
