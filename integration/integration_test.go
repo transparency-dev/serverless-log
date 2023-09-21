@@ -26,110 +26,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/golang/glog"
-	"github.com/transparency-dev/merkle"
-	"github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/client"
 	"github.com/transparency-dev/serverless-log/internal/storage/fs"
-	"github.com/transparency-dev/serverless-log/pkg/log"
 	"golang.org/x/mod/sumdb/note"
-
-	fmtlog "github.com/transparency-dev/formats/log"
 )
-
-const (
-	pubKey            = "astra+cad5a3d2+AZJqeuyE/GnknsCNh1eCtDtwdAwKBddOlS8M2eI1Jt4b"
-	privKey           = "PRIVATE+KEY+astra+cad5a3d2+ASgwwenlc0uuYcdy7kI44pQvuz1fw8cS5NqS8RkZBXoy"
-	integrationOrigin = "Serverless Integration Test Log"
-)
-
-func RunIntegration(t *testing.T, s log.Storage, f client.Fetcher, lh *rfc6962.Hasher, signer note.Signer) {
-	ctx := context.Background()
-
-	// Do a few iterations around the sequence/integrate loop;
-	const (
-		loops         = 50
-		leavesPerLoop = 257
-	)
-
-	// Create signature verifier
-	v, err := note.NewVerifier(pubKey)
-	if err != nil {
-		glog.Exitf("Unable to create new verifier: %q", err)
-	}
-
-	lst, err := client.NewLogStateTracker(ctx, f, lh, nil, v, integrationOrigin, client.UnilateralConsensus(f))
-	if err != nil {
-		t.Fatalf("Failed to create new log state tracker: %q", err)
-	}
-
-	for i := 0; i < loops; i++ {
-		glog.Infof("----------------%d--------------", i)
-		checkpoint := lst.LatestConsistent
-
-		// Sequence some leaves:
-		leaves := sequenceNLeaves(ctx, t, s, lh, i*leavesPerLoop, leavesPerLoop)
-
-		var latestCpNote *note.Note
-		// Integrate those leaves
-		{
-			update, err := log.Integrate(ctx, checkpoint.Size, s, lh)
-			if err != nil {
-				t.Fatalf("Integrate = %v", err)
-			}
-			update.Origin = integrationOrigin
-			cpNote := note.Note{Text: string(update.Marshal())}
-			cpNoteSigned, err := note.Sign(&cpNote, signer)
-			if err != nil {
-				t.Fatalf("Failed to sign Checkpoint: %q", err)
-			}
-			if err := s.WriteCheckpoint(ctx, cpNoteSigned); err != nil {
-				t.Fatalf("Failed to store new log checkpoint: %q", err)
-			}
-			latestCpNote = &cpNote
-		}
-
-		// State tracker will verify consistency of larger tree
-		_, _, latestCpRaw, err := lst.Update(ctx)
-		if err != nil {
-			t.Fatalf("Failed to update tracked log state: %q", err)
-		}
-		// Verify that the returned checkpoint note is as expected.
-		updateNote, err := note.Open(latestCpRaw, note.VerifierList(v))
-		if err != nil {
-			t.Fatalf("Failed to open checkpoint note returned from Update: %q", err)
-		}
-		if latestCpNote.Text != updateNote.Text {
-			t.Fatalf("LogStateTracker.Update() did not return correct note information. Got %v want %v",
-				lst.CheckpointNote.Text, updateNote.Text)
-		}
-		newCheckpoint := lst.LatestConsistent
-		if got, want := newCheckpoint.Size-checkpoint.Size, uint64(leavesPerLoop); got != want {
-			t.Errorf("Integrate missed some entries, got %d want %d", got, want)
-		}
-
-		pb, err := client.NewProofBuilder(ctx, newCheckpoint, lh.HashChildren, f)
-		if err != nil {
-			t.Fatalf("Failed to create ProofBuilder: %q", err)
-		}
-
-		for _, l := range leaves {
-			h := lh.HashLeaf(l)
-			idx, err := client.LookupIndex(ctx, f, h)
-			if err != nil {
-				t.Fatalf("Failed to lookup leaf index: %v", err)
-			}
-			ip, err := pb.InclusionProof(ctx, idx)
-			if err != nil {
-				t.Fatalf("Failed to fetch inclusion proof for %d: %v", idx, err)
-			}
-			if err := proof.VerifyInclusion(lh, idx, newCheckpoint.Size, h, ip, newCheckpoint.Hash); err != nil {
-				t.Fatalf("Invalid inclusion proof for %d: %x", idx, ip)
-			}
-		}
-	}
-}
 
 func TestServerlessViaFile(t *testing.T) {
 	t.Parallel()
@@ -159,7 +60,7 @@ func TestServerlessViaFile(t *testing.T) {
 	}
 
 	// Run test
-	RunIntegration(t, st, f, h, s)
+	RunIntegration(t, st, f, h)
 }
 
 func TestServerlessViaHTTP(t *testing.T) {
@@ -200,19 +101,7 @@ func TestServerlessViaHTTP(t *testing.T) {
 	f := httpFetcher(t, url)
 
 	// Run test
-	RunIntegration(t, st, f, h, s)
-}
-
-func sequenceNLeaves(ctx context.Context, t *testing.T, s log.Storage, lh merkle.LogHasher, start, n int) [][]byte {
-	r := make([][]byte, 0, n)
-	for i := 0; i < n; i++ {
-		c := []byte(fmt.Sprintf("Leaf %d", start+i))
-		if _, err := s.Sequence(ctx, lh.HashLeaf(c), c); err != nil {
-			t.Fatalf("Sequence = %v", err)
-		}
-		r = append(r, c)
-	}
-	return r
+	RunIntegration(t, st, f, h)
 }
 
 func httpFetcher(t *testing.T, u string) client.Fetcher {
@@ -244,30 +133,12 @@ func httpFetcher(t *testing.T, u string) client.Fetcher {
 	}
 }
 
-func mustGetSigner(t *testing.T, privKey string) note.Signer {
-	t.Helper()
-	s, err := note.NewSigner(privKey)
-	if err != nil {
-		glog.Exitf("Failed to instantiate signer: %q", err)
-	}
-	return s
-}
-
 func mustCreateAndInitialiseStorage(ctx context.Context, t *testing.T, root string, s note.Signer) *fs.Storage {
 	t.Helper()
 	st, err := fs.Create(root)
 	if err != nil {
 		t.Fatalf("Create = %v", err)
 	}
-	cp := fmtlog.Checkpoint{}
-	cp.Origin = integrationOrigin
-	cpNote := note.Note{Text: string(cp.Marshal())}
-	cpNoteSigned, err := note.Sign(&cpNote, s)
-	if err != nil {
-		t.Fatalf("Failed to sign Checkpoint: %q", err)
-	}
-	if err := st.WriteCheckpoint(ctx, cpNoteSigned); err != nil {
-		t.Fatalf("Failed to store new log checkpoint: %q", err)
-	}
+	InitialiseStorage(ctx, t, st)
 	return st
 }
