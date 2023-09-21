@@ -24,7 +24,9 @@ import (
 
 func TestMemStorage(t *testing.T) {
 	ms := NewMemStorage()
-	integration.InitialiseStorage(context.Background(), t, ms)
+	if err := integration.InitialiseStorage(context.Background(), t, ms); err != nil {
+		t.Fatalf("InitialiseStorage: %v", err)
+	}
 
 	integration.RunIntegration(t, ms, ms.Fetcher(), rfc6962.DefaultHasher)
 }
