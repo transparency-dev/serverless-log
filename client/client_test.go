@@ -35,7 +35,7 @@ var (
 	testOrigin      = "Log Checkpoint v0"
 	testLogVerifier = mustMakeVerifier("astra+cad5a3d2+AZJqeuyE/GnknsCNh1eCtDtwdAwKBddOlS8M2eI1Jt4b")
 	// Built using serverless/testdata/build_log.sh
-	testCheckpointsRaw, testCheckpoints = mustLoadTestCheckpoints()
+	testRawCheckpoints, testCheckpoints = mustLoadTestCheckpoints()
 )
 
 func b64(r string) []byte {
@@ -81,6 +81,62 @@ func mustLoadTestCheckpoints() ([][]byte, []log.Checkpoint) {
 func testLogFetcher(_ context.Context, p string) ([]byte, error) {
 	path := filepath.Join("../testdata/log", p)
 	return os.ReadFile(path)
+}
+
+func TestCheckLogStateTracker(t *testing.T) {
+	ctx := context.Background()
+	h := rfc6962.DefaultHasher
+
+	lst := NewLogStateTracker(ctx, testLogFetcher, h, testRawCheckpoints[0])
+
+	for _, test := range []struct {
+		desc    string
+		cpRaws  [][]byte
+	}{} {
+		{
+			desc: "Consistent",
+			cpRaws: [][]byte{
+				testRawCheckpoints[0],
+				testRawCheckpoints[2],
+				testRawCheckpoints[3],
+				testRawCheckpoints[5],
+				testRawCheckpoints[6],
+				testRawCheckpoints[10],
+			},
+		}, {
+			desc: "Identical CP",
+			cpRaws: [][]byte{
+				testRawCheckpoints[0],
+				testRawCheckpoints[0],
+				testRawCheckpoints[0],
+				testRawCheckpoints[0],
+			},
+		}, {
+			desc: "Identical CP pairs",
+			cpRaws: [][]byte{
+				testRawCheckpoints[0],
+				testRawCheckpoints[0],
+				testRawCheckpoints[5],
+				testRawCheckpoints[5],
+			},
+		}, {
+			desc: "Out of order",
+			cpRaws: [][]byte{
+				testRawCheckpoints[5],
+				testRawCheckpoints[2],
+				testRawCheckpoints[0],
+				testRawCheckpoints[3],
+			},
+		},
+	} {
+		t.Run(test.desc, func(t *testing.T){
+			for i, cpRaw := range test.cpRaws {
+				if err := lst.Update(ctx, cpRaw); err != nil {
+					t.Errorf("Update %d: %v", i, err)
+				}
+			}
+		})
+	}
 }
 
 func TestCheckConsistency(t *testing.T) {

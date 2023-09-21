@@ -397,21 +397,23 @@ func (lst *LogStateTracker) Update(ctx context.Context) ([]byte, [][]byte, []byt
 	}
 	var p [][]byte
 	if lst.LatestConsistent.Size > 0 {
-		if c.Size > lst.LatestConsistent.Size {
-			p, err = builder.ConsistencyProof(ctx, lst.LatestConsistent.Size, c.Size)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			if err := proof.VerifyConsistency(lst.Hasher, lst.LatestConsistent.Size, c.Size, p, lst.LatestConsistent.Hash, c.Hash); err != nil {
-				return nil, nil, nil, ErrInconsistency{
-					SmallerRaw: lst.LatestConsistentRaw,
-					LargerRaw:  cRaw,
-					Proof:      p,
-					Wrapped:    err,
-				}
-			}
-			// Update is consistent,
+		if c.Size <= lst.LatestConsistent.Size {
+			return lst.LatestConsistentRaw, p, lst.LatestConsistentRaw, nil
 		}
+		p, err = builder.ConsistencyProof(ctx, lst.LatestConsistent.Size, c.Size)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if err := proof.VerifyConsistency(lst.Hasher, lst.LatestConsistent.Size, c.Size, p, lst.LatestConsistent.Hash, c.Hash); err != nil {
+			return nil, nil, nil, ErrInconsistency{
+				SmallerRaw: lst.LatestConsistentRaw,
+				LargerRaw:  cRaw,
+				Proof:      p,
+				Wrapped:    err,
+			}
+		}
+		// Update is consistent,
+
 	}
 	oldRaw := lst.LatestConsistentRaw
 	lst.LatestConsistentRaw, lst.LatestConsistent, lst.CheckpointNote = cRaw, *c, cn
