@@ -125,7 +125,7 @@ func RunIntegration(t *testing.T, s log.Storage, f client.Fetcher, lh *rfc6962.H
 	}
 }
 
-func InitialiseStorage(ctx context.Context, t *testing.T, st log.Storage) error {
+func InitialiseStorage(ctx context.Context, t *testing.T, st log.Storage) {
 	t.Helper()
 	cp := fmtlog.Checkpoint{}
 	cp.Origin = integrationOrigin
@@ -138,7 +138,6 @@ func InitialiseStorage(ctx context.Context, t *testing.T, st log.Storage) error 
 	if err := st.WriteCheckpoint(ctx, cpNoteSigned); err != nil {
 		t.Fatalf("Failed to store new log checkpoint: %q", err)
 	}
-	return nil
 }
 
 func sequenceNLeaves(ctx context.Context, t *testing.T, s log.Storage, lh merkle.LogHasher, start, n int) [][]byte {

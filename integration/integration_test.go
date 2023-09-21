@@ -139,8 +139,7 @@ func mustCreateAndInitialiseStorage(ctx context.Context, t *testing.T, root stri
 	if err != nil {
 		t.Fatalf("Create = %v", err)
 	}
-	if err := InitialiseStorage(ctx, t, st); err != nil {
-		t.Fatalf("InitialiseStorage = %v", err)
-	}
+	InitialiseStorage(ctx, t, st)
+
 	return st
 }
