@@ -17,7 +17,6 @@ package client
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -38,14 +37,6 @@ var (
 	// Built using serverless/testdata/build_log.sh
 	testRawCheckpoints, testCheckpoints = mustLoadTestCheckpoints()
 )
-
-func b64(r string) []byte {
-	ret, err := base64.StdEncoding.DecodeString(r)
-	if err != nil {
-		panic(err)
-	}
-	return ret
-}
 
 func mustMakeVerifier(vs string) note.Verifier {
 	v, err := note.NewVerifier(vs)
