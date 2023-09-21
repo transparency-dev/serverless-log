@@ -318,12 +318,12 @@ type LogStateTracker struct {
 	// LatestConsistentRaw holds the raw bytes of the latest proven-consistent
 	// LogState seen by this tracker.
 	LatestConsistentRaw []byte
-
 	// LatestConsistent is the deserialised form of LatestConsistentRaw
 	LatestConsistent log.Checkpoint
-
 	// The note with signatures and other metadata about the checkpoint
 	CheckpointNote *note.Note
+	// ProofBuilder for building proofs at LatestConsistent checkpoint.
+	ProofBuilder *ProofBuilder
 
 	CpSigVerifier note.Verifier
 }
@@ -348,6 +348,10 @@ func NewLogStateTracker(ctx context.Context, f Fetcher, h merkle.LogHasher, chec
 			return ret, err
 		}
 		ret.LatestConsistent = *cp
+		ret.ProofBuilder, err = NewProofBuilder(ctx, ret.LatestConsistent, ret.Hasher.HashChildren, ret.Fetcher)
+		if err != nil {
+			return ret, fmt.Errorf("NewProofBuilder: %v", err)
+		}
 		return ret, nil
 	}
 	_, _, _, err := ret.Update(ctx)
@@ -387,13 +391,13 @@ func (lst *LogStateTracker) Update(ctx context.Context) ([]byte, [][]byte, []byt
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	builder, err := NewProofBuilder(ctx, *c, lst.Hasher.HashChildren, lst.Fetcher)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create proof builder: %w", err)
+	}
 	var p [][]byte
 	if lst.LatestConsistent.Size > 0 {
 		if c.Size > lst.LatestConsistent.Size {
-			builder, err := NewProofBuilder(ctx, *c, lst.Hasher.HashChildren, lst.Fetcher)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to create proof builder: %w", err)
-			}
 			p, err = builder.ConsistencyProof(ctx, lst.LatestConsistent.Size, c.Size)
 			if err != nil {
 				return nil, nil, nil, err
@@ -406,10 +410,12 @@ func (lst *LogStateTracker) Update(ctx context.Context) ([]byte, [][]byte, []byt
 					Wrapped:    err,
 				}
 			}
+			// Update is consistent,
 		}
 	}
 	oldRaw := lst.LatestConsistentRaw
 	lst.LatestConsistentRaw, lst.LatestConsistent, lst.CheckpointNote = cRaw, *c, cn
+	lst.ProofBuilder = builder
 	return oldRaw, p, lst.LatestConsistentRaw, nil
 }
 

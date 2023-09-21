@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,48 +28,14 @@ import (
 	"github.com/transparency-dev/merkle/compact"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/api"
+	"golang.org/x/mod/sumdb/note"
 )
 
 var (
+	testOrigin      = "Log Checkpoint v0"
+	testLogVerifier = mustMakeVerifier("astra+cad5a3d2+AZJqeuyE/GnknsCNh1eCtDtwdAwKBddOlS8M2eI1Jt4b")
 	// Built using serverless/testdata/build_log.sh
-	testCheckpoints = []log.Checkpoint{
-		{
-			Size: 1,
-			Hash: b64("0Nc2CrefWKseHj/mStd+LqC8B+NrX0btIiPt2SmN+ek="),
-		},
-		{
-			Size: 2,
-			Hash: b64("T1X2GdkhUjV3iyufF9b0kVsWFxIU0VI4EpNml2Teci4="),
-		},
-		{
-			Size: 3,
-			Hash: b64("Wqx3HImawpLnS/Gv4ubjAvi1WIOy0b8Ze0amvqbavKk="),
-		},
-		{
-			Size: 4,
-			Hash: b64("zY1lN35vrXYAPixXSd59LsU29xUJtuW4o2dNNg5Y2Co="),
-		},
-		{
-			Size: 5,
-			Hash: b64("gy5gl3aksFyiCO95a/1vLXz88A3dRq+0l9Sxte8ZqZQ="),
-		},
-		{
-			Size: 6,
-			Hash: b64("a6sWvsc2eEzmj72vah7mZ5dwFltivehh2b11qwlp5Jg="),
-		},
-		{
-			Size: 7,
-			Hash: b64("IrSXADBqJ7EQoUODSDKROySgNveeL6CFhik2w/+fS7U="),
-		},
-		{
-			Size: 14,
-			Hash: b64("SvCd38yNade7xEPY1a/aAc1M3A2AHYVF8lIiUnsH1ao="),
-		},
-		{
-			Size: 15,
-			Hash: b64("rKbDipCvhuX1GZ7g5BBe8sA6BbJ7ja/1nk427v383cs="),
-		},
-	}
+	testCheckpointsRaw, testCheckpoints = mustLoadTestCheckpoints()
 )
 
 func b64(r string) []byte {
@@ -78,15 +46,48 @@ func b64(r string) []byte {
 	return ret
 }
 
+func mustMakeVerifier(vs string) note.Verifier {
+	v, err := note.NewVerifier(vs)
+	if err != nil {
+		panic(fmt.Errorf("NewVerifier(%q): %v", vs, err))
+	}
+	return v
+}
+
+func mustLoadTestCheckpoints() ([][]byte, []log.Checkpoint) {
+	raws, cps := make([][]byte, 0), make([]log.Checkpoint, 0)
+	for i := 1; ; i++ {
+		cpName := fmt.Sprintf("checkpoint.%d", i)
+		r, err := testLogFetcher(context.Background(), cpName)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				// Probably just no more checkpoints left
+				break
+			}
+			panic(err)
+		}
+		cp, _, _, err := log.ParseCheckpoint(r, testOrigin, testLogVerifier)
+		if err != nil {
+			panic(fmt.Errorf("ParseCheckpoint(%s): %v", cpName, err))
+		}
+		raws, cps = append(raws, r), append(cps, *cp)
+	}
+	if len(raws) == 0 {
+		panic("no checkpoints loaded")
+	}
+	return raws, cps
+}
+
+func testLogFetcher(_ context.Context, p string) ([]byte, error) {
+	path := filepath.Join("../testdata/log", p)
+	return os.ReadFile(path)
+}
+
 func TestCheckConsistency(t *testing.T) {
 	ctx := context.Background()
 
 	h := rfc6962.DefaultHasher
 
-	f := func(_ context.Context, p string) ([]byte, error) {
-		path := filepath.Join("../testdata/log", p)
-		return os.ReadFile(path)
-	}
 	for _, test := range []struct {
 		desc    string
 		cp      []log.Checkpoint
@@ -186,7 +187,7 @@ func TestCheckConsistency(t *testing.T) {
 		},
 	} {
 		t.Run(test.desc, func(t *testing.T) {
-			err := CheckConsistency(ctx, h, f, test.cp)
+			err := CheckConsistency(ctx, h, testLogFetcher, test.cp)
 			if gotErr := err != nil; gotErr != test.wantErr {
 				t.Fatalf("wantErr: %t, got %v", test.wantErr, err)
 			}
