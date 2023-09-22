@@ -27,9 +27,9 @@ import (
 	"github.com/transparency-dev/serverless-log/internal/storage/fs"
 	"golang.org/x/mod/sumdb/note"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/pkg/log"
+	"k8s.io/klog/v2"
 
 	fmtlog "github.com/transparency-dev/formats/log"
 )
@@ -49,22 +49,22 @@ func main() {
 	if len(*pubKeyFile) > 0 {
 		k, err := os.ReadFile(*pubKeyFile)
 		if err != nil {
-			glog.Exitf("failed to read public_key file: %q", err)
+			klog.Exitf("failed to read public_key file: %q", err)
 		}
 		pubKey = string(k)
 	} else {
 		pubKey = os.Getenv("SERVERLESS_LOG_PUBLIC_KEY")
 		if len(pubKey) == 0 {
-			glog.Exit("supply public key file path using --public_key or set SERVERLESS_LOG_PUBLIC_KEY environment variable")
+			klog.Exit("supply public key file path using --public_key or set SERVERLESS_LOG_PUBLIC_KEY environment variable")
 		}
 	}
 
 	toAdd, err := filepath.Glob(*entries)
 	if err != nil {
-		glog.Exitf("Failed to glob entries %q: %q", *entries, err)
+		klog.Exitf("Failed to glob entries %q: %q", *entries, err)
 	}
 	if len(toAdd) == 0 {
-		glog.Exit("Sequence must be run with at least one valid entry")
+		klog.Exit("Sequence must be run with at least one valid entry")
 	}
 
 	h := rfc6962.DefaultHasher
@@ -72,22 +72,22 @@ func main() {
 
 	cpRaw, err := fs.ReadCheckpoint(*storageDir)
 	if err != nil {
-		glog.Exitf("Failed to read log checkpoint: %q", err)
+		klog.Exitf("Failed to read log checkpoint: %q", err)
 	}
 
 	// Check signatures
 	v, err := note.NewVerifier(pubKey)
 	if err != nil {
-		glog.Exitf("Failed to instantiate Verifier: %q", err)
+		klog.Exitf("Failed to instantiate Verifier: %q", err)
 	}
 	cp, _, _, err := fmtlog.ParseCheckpoint(cpRaw, *origin, v)
 	if err != nil {
-		glog.Exitf("Failed to parse Checkpoint: %q", err)
+		klog.Exitf("Failed to parse Checkpoint: %q", err)
 	}
 
 	st, err := fs.Load(*storageDir, cp.Size)
 	if err != nil {
-		glog.Exitf("Failed to load storage: %q", err)
+		klog.Exitf("Failed to load storage: %q", err)
 	}
 
 	// sequence entries
@@ -105,7 +105,7 @@ func main() {
 		for _, fp := range toAdd {
 			b, err := os.ReadFile(fp)
 			if err != nil {
-				glog.Exitf("Failed to read entry file %q: %q", fp, err)
+				klog.Exitf("Failed to read entry file %q: %q", fp, err)
 			}
 			entries <- entryInfo{name: fp, b: b}
 		}
@@ -121,13 +121,13 @@ func main() {
 			if errors.Is(err, log.ErrDupeLeaf) {
 				dupe = true
 			} else {
-				glog.Exitf("failed to sequence %q: %q", entry.name, err)
+				klog.Exitf("failed to sequence %q: %q", entry.name, err)
 			}
 		}
 		l := fmt.Sprintf("%d: %v", seq, entry.name)
 		if dupe {
 			l += " (dupe)"
 		}
-		glog.Info(l)
+		klog.Info(l)
 	}
 }

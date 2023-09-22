@@ -22,13 +22,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/compact"
 	"github.com/transparency-dev/serverless-log/api"
 	"github.com/transparency-dev/serverless-log/api/layout"
 	"github.com/transparency-dev/serverless-log/client"
+	"k8s.io/klog/v2"
 )
 
 // Storage represents the set of functions needed by the log tooling.
@@ -91,7 +91,7 @@ func Integrate(ctx context.Context, fromSize uint64, st Storage, h merkle.LogHas
 		return nil, fmt.Errorf("invalid log state, unable to recalculate root: %w", err)
 	}
 
-	glog.Infof("Loaded state with roothash %x", r)
+	klog.Infof("Loaded state with roothash %x", r)
 
 	// Create a new compact range which represents the update to the tree
 	newRange := rf.NewEmptyRange(fromSize)
@@ -110,7 +110,7 @@ func Integrate(ctx context.Context, fromSize uint64, st Storage, h merkle.LogHas
 		return nil, fmt.Errorf("error while integrating: %w", err)
 	}
 	if n == 0 {
-		glog.Infof("Nothing to do.")
+		klog.Infof("Nothing to do.")
 		// Nothing to do, nothing done.
 		return nil, nil
 	}
@@ -129,7 +129,7 @@ func Integrate(ctx context.Context, fromSize uint64, st Storage, h merkle.LogHas
 
 	// All calculation is now complete, all that remains is to store the new
 	// tiles and updated log state.
-	glog.Infof("New log state: size 0x%x hash: %x", baseRange.End(), newRoot)
+	klog.Infof("New log state: size 0x%x hash: %x", baseRange.End(), newRoot)
 
 	for k, t := range tc.m {
 		if err := st.StoreTile(ctx, k.level, k.index, t); err != nil {
@@ -198,7 +198,7 @@ func (tc tileCache) Visit(id compact.NodeID, hash []byte) {
 				Nodes: make([][]byte, 0, 256*2),
 			}
 		}
-		glog.V(2).Infof("GetTile: %v new: %v", tileKey, created)
+		klog.V(2).Infof("GetTile: %v new: %v", tileKey, created)
 		tc.m[tileKey] = tile
 	}
 	// Update the tile with the new node hash.
