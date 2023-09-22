@@ -24,10 +24,10 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/serverless-log/api"
 	"github.com/transparency-dev/serverless-log/api/layout"
 	"github.com/transparency-dev/serverless-log/pkg/log"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -155,7 +155,7 @@ func (fs *Storage) Sequence(ctx context.Context, leafhash []byte, leaf []byte) (
 		}
 		defer func() {
 			if err := os.Remove(leafTmp); err != nil {
-				glog.Errorf("os.Remove(): %v", err)
+				klog.Errorf("os.Remove(): %v", err)
 			}
 		}()
 		// Link the temporary file in place, if it already exists we likely crashed after
@@ -186,7 +186,7 @@ func (fs *Storage) Assign(_ context.Context, seq uint64, leaf []byte) error {
 	}
 	defer func() {
 		if err := os.Remove(tmp); err != nil {
-			glog.Errorf("os.Remove(): %v", err)
+			klog.Errorf("os.Remove(): %v", err)
 		}
 	}()
 
@@ -270,7 +270,7 @@ func (fs *Storage) GetTile(_ context.Context, level, index, logSize uint64) (*ap
 // stored with a .xx suffix where xx is the number of "tile leaves" in hex.
 func (fs *Storage) StoreTile(_ context.Context, level, index uint64, tile *api.Tile) error {
 	tileSize := uint64(tile.NumLeaves)
-	glog.V(2).Infof("StoreTile: level %d index %x ts: %x", level, index, tileSize)
+	klog.V(2).Infof("StoreTile: level %d index %x ts: %x", level, index, tileSize)
 	if tileSize == 0 || tileSize > 256 {
 		return fmt.Errorf("tileSize %d must be > 0 and <= 256", tileSize)
 	}
@@ -302,7 +302,7 @@ func (fs *Storage) StoreTile(_ context.Context, level, index uint64, tile *api.T
 		}
 		// Clean up old partial tiles by symlinking them to the new full tile.
 		for _, p := range partials {
-			glog.V(2).Infof("relink partial %s to %s", p, tPath)
+			klog.V(2).Infof("relink partial %s to %s", p, tPath)
 			// We have to do a little dance here to get POSIX atomicity:
 			// 1. Create a new temporary symlink to the full tile
 			// 2. Rename the temporary symlink over the top of the old partial tile

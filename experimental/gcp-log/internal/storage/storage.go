@@ -25,12 +25,12 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/serverless-log/api"
 	"github.com/transparency-dev/serverless-log/api/layout"
 	"github.com/transparency-dev/serverless-log/pkg/log"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
+	"k8s.io/klog/v2"
 
 	gcs "cloud.google.com/go/storage"
 )
@@ -339,7 +339,7 @@ func (c *Client) Sequence(ctx context.Context, leafhash []byte, leaf []byte) (ui
 // stored with a .xx suffix where xx is the number of "tile leaves" in hex.
 func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.Tile) error {
 	tileSize := uint64(tile.NumLeaves)
-	glog.V(2).Infof("StoreTile: level %d index %x ts: %x", level, index, tileSize)
+	klog.V(2).Infof("StoreTile: level %d index %x ts: %x", level, index, tileSize)
 	if tileSize == 0 || tileSize > 256 {
 		return fmt.Errorf("tileSize %d must be > 0 and <= 256", tileSize)
 	}

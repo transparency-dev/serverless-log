@@ -20,10 +20,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/serverless-log/client"
 	"golang.org/x/mod/sumdb/note"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -151,7 +151,7 @@ func TestCheckpointNConsensus(t *testing.T) {
 				t.Errorf("got CP:\n%s\nWant:\n%s", got, want)
 			}
 		})
-		glog.Flush()
+		klog.Flush()
 	}
 }
 

@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/golang/glog"
 	"golang.org/x/mod/sumdb/note"
+	"k8s.io/klog/v2"
 )
 
 var (
@@ -36,18 +36,18 @@ func main() {
 	flag.Parse()
 
 	if len(*keyName) == 0 {
-		glog.Exit("--key_name required")
+		klog.Exit("--key_name required")
 	}
 
 	if !(*print) {
 		if len(*outPriv) == 0 || len(*outPub) == 0 {
-			glog.Exit("--print and/or --out_priv and --out_pub required.")
+			klog.Exit("--print and/or --out_priv and --out_pub required.")
 		}
 	}
 
 	skey, vkey, err := note.GenerateKey(rand.Reader, *keyName)
 	if err != nil {
-		glog.Exitf("Unable to create key: %q", err)
+		klog.Exitf("Unable to create key: %q", err)
 	}
 
 	if *print {
@@ -57,10 +57,10 @@ func main() {
 
 	if len(*outPriv) > 0 && len(*outPub) > 0 {
 		if err := writeFileIfNotExists(*outPriv, skey); err != nil {
-			glog.Exit(err)
+			klog.Exit(err)
 		}
 		if err := writeFileIfNotExists(*outPub, vkey); err != nil {
-			glog.Exit(err)
+			klog.Exit(err)
 		}
 	}
 }

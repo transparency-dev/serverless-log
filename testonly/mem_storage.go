@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/golang/glog"
+	"k8s.io/klog/v2"
 
 	"github.com/transparency-dev/serverless-log/api"
 	"github.com/transparency-dev/serverless-log/api/layout"
@@ -73,7 +73,7 @@ func (ms *MemStorage) StoreTile(_ context.Context, level, index uint64, tile *ap
 
 	tileSize := uint64(tile.NumLeaves)
 	d, k := layout.TilePath("", level, index, tileSize%256)
-	glog.Infof("Store tile %s", filepath.Join(d, k))
+	klog.Infof("Store tile %s", filepath.Join(d, k))
 	ms.fs[filepath.Join(d, k)] = t
 	return nil
 }
@@ -128,7 +128,7 @@ func (ms *MemStorage) Fetcher() client.Fetcher {
 	return func(_ context.Context, path string) ([]byte, error) {
 		ms.Lock()
 		defer ms.Unlock()
-		glog.Infof("Fetch %s", path)
+		klog.Infof("Fetch %s", path)
 		r, ok := ms.fs[path]
 		if !ok {
 			return nil, os.ErrNotExist

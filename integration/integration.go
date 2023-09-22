@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/client"
 	"github.com/transparency-dev/serverless-log/pkg/log"
 	"golang.org/x/mod/sumdb/note"
+	"k8s.io/klog/v2"
 
 	fmtlog "github.com/transparency-dev/formats/log"
 )
@@ -50,7 +50,7 @@ func RunIntegration(t *testing.T, s log.Storage, f client.Fetcher, lh *rfc6962.H
 	// Create signature verifier
 	v, err := note.NewVerifier(pubKey)
 	if err != nil {
-		glog.Exitf("Unable to create new verifier: %q", err)
+		klog.Exitf("Unable to create new verifier: %q", err)
 	}
 
 	lst, err := client.NewLogStateTracker(ctx, f, lh, nil, v, integrationOrigin, client.UnilateralConsensus(f))
@@ -59,7 +59,7 @@ func RunIntegration(t *testing.T, s log.Storage, f client.Fetcher, lh *rfc6962.H
 	}
 
 	for i := 0; i < loops; i++ {
-		glog.Infof("----------------%d--------------", i)
+		klog.Infof("----------------%d--------------", i)
 		checkpoint := lst.LatestConsistent
 
 		// Sequence some leaves:

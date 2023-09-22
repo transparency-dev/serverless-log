@@ -29,19 +29,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/client"
 	"github.com/transparency-dev/serverless-log/client/witness"
 	"golang.org/x/mod/sumdb/note"
+	"k8s.io/klog/v2"
 )
 
 func defaultCacheLocation() string {
 	hd, err := os.UserCacheDir()
 	if err != nil {
-		glog.Warningf("Failed to determine user cache dir: %q", err)
+		klog.Warningf("Failed to determine user cache dir: %q", err)
 		return ""
 	}
 	return fmt.Sprintf("%s/serverless", hd)
@@ -95,7 +95,7 @@ func main() {
 
 	logSigV, _, err := logSigVerifier(*logPubKeyFile)
 	if err != nil {
-		glog.Exitf("failed to read log public key: %v", err)
+		klog.Exitf("failed to read log public key: %v", err)
 	}
 	logID := *logID
 	if logID == "" {
@@ -104,7 +104,7 @@ func main() {
 
 	u := *logURL
 	if len(u) == 0 {
-		glog.Exitf("--log_url must be provided")
+		klog.Exitf("--log_url must be provided")
 	}
 	// url must reference a directory, by definition
 	if !strings.HasSuffix(u, "/") {
@@ -113,27 +113,27 @@ func main() {
 
 	rootURL, err := url.Parse(u)
 	if err != nil {
-		glog.Exitf("Invalid log URL: %v", err)
+		klog.Exitf("Invalid log URL: %v", err)
 	}
 
 	witnesses, err := witnessSigVerifiers(*witnessPubKeyFiles)
 	if err != nil {
-		glog.Exitf("Failed to read witness pub keys: %v", err)
+		klog.Exitf("Failed to read witness pub keys: %v", err)
 	}
 
 	if want, got := *witnessSigsRequired, len(witnesses); want > got {
-		glog.Exitf("--witness_sigs_required=%d but only %d witnesses configured", want, got)
+		klog.Exitf("--witness_sigs_required=%d but only %d witnesses configured", want, got)
 	}
 
 	distribs, err := distributors()
 	if err != nil {
-		glog.Exitf("Failed to create distributors list: %v", err)
+		klog.Exitf("Failed to create distributors list: %v", err)
 	}
 
 	f := newFetcher(rootURL)
 	lc, err := newLogClientTool(ctx, logID, f, logSigV, witnesses, distribs)
 	if err != nil {
-		glog.Exitf("Failed to create new client: %v", err)
+		klog.Exitf("Failed to create new client: %v", err)
 	}
 
 	args := flag.Args()
@@ -151,13 +151,13 @@ func main() {
 		usage()
 	}
 	if err != nil {
-		glog.Exitf("Command %q failed: %q", args[0], err)
+		klog.Exitf("Command %q failed: %q", args[0], err)
 	}
 
 	// Persist new view of log state, if required.
 	if len(*cacheDir) > 0 {
 		if err := storeLocalCheckpoint(logID, lc.Tracker.LatestConsistentRaw); err != nil {
-			glog.Exitf("Failed to persist local log state: %q", err)
+			klog.Exitf("Failed to persist local log state: %q", err)
 		}
 	}
 }
@@ -180,16 +180,16 @@ func newLogClientTool(ctx context.Context, logID string, logFetcher client.Fetch
 			return nil, fmt.Errorf("failed to load cached checkpoint: %q", err)
 		}
 	} else {
-		glog.Info("Local log state cache disabled")
+		klog.Info("Local log state cache disabled")
 	}
 
 	hasher := rfc6962.DefaultHasher
 	var cons client.ConsensusCheckpointFunc
 	if *witnessSigsRequired == 0 {
-		glog.V(1).Infof("witness_sigs_required is 0, using unilateral consensus")
+		klog.V(1).Infof("witness_sigs_required is 0, using unilateral consensus")
 		cons = client.UnilateralConsensus(logFetcher)
 	} else {
-		glog.V(1).Infof("witness_sigs_required > 0, using checkpoint.N consensus")
+		klog.V(1).Infof("witness_sigs_required > 0, using checkpoint.N consensus")
 		cons, err = witness.CheckpointNConsensus(logID, distributors, witnesses, *witnessSigsRequired)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create consensus func: %v", err)
@@ -198,7 +198,7 @@ func newLogClientTool(ctx context.Context, logID string, logFetcher client.Fetch
 	tracker, err := client.NewLogStateTracker(ctx, logFetcher, hasher, cpRaw, logSigV, *origin, cons)
 
 	if err != nil {
-		glog.Warningf("%s", string(cpRaw))
+		klog.Warningf("%s", string(cpRaw))
 		return nil, fmt.Errorf("failed to create LogStateTracker: %q", err)
 	}
 
@@ -236,7 +236,7 @@ func (l *logClientTool) consistencyProof(ctx context.Context, args []string) err
 		return fmt.Errorf("failed to build consistency proof: %w", err)
 	}
 
-	glog.V(1).Infof("Built consistency proof: %#x", p)
+	klog.V(1).Infof("Built consistency proof: %#x", p)
 
 	if o := *outputConsistency; len(o) > 0 {
 		if err := os.WriteFile(o, []byte(merkleProof(p).Marshal()), 0644); err != nil {
@@ -294,7 +294,7 @@ func (l *logClientTool) inclusionProofArgs(ctx context.Context, args []string) (
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to lookup leaf index: %w", err)
 		}
-		glog.Infof("Leaf %q found at index %d", args[0], idx)
+		klog.Infof("Leaf %q found at index %d", args[0], idx)
 	}
 
 	return lh, idx, nil
@@ -319,7 +319,7 @@ func (l *logClientTool) inclusionProof(ctx context.Context, args []string) error
 		return fmt.Errorf("failed to get inclusion proof: %w", err)
 	}
 
-	glog.V(1).Infof("Built inclusion proof: %#x", p)
+	klog.V(1).Infof("Built inclusion proof: %#x", p)
 
 	if err := proof.VerifyInclusion(l.Hasher, idx, cp.Size, lh, p, cp.Hash); err != nil {
 		return fmt.Errorf("failed to verify inclusion proof: %q", err)
@@ -328,11 +328,11 @@ func (l *logClientTool) inclusionProof(ctx context.Context, args []string) error
 	if o := *outputInclusion; len(o) > 0 {
 		ps := []byte(merkleProof(p).Marshal())
 		if err := os.WriteFile(o, ps, 0644); err != nil {
-			glog.Warningf("Failed to write inclusion proof to %q: %v", o, err)
+			klog.Warningf("Failed to write inclusion proof to %q: %v", o, err)
 		}
 	}
 
-	glog.Infof("Inclusion verified under checkpoint:\n%s", cp.Marshal())
+	klog.Infof("Inclusion verified under checkpoint:\n%s", cp.Marshal())
 	return nil
 }
 
@@ -341,7 +341,7 @@ func (l *logClientTool) updateCheckpoint(ctx context.Context, args []string) err
 		return fmt.Errorf("usage: update")
 	}
 
-	glog.V(1).Infof("Original checkpoint:\n%s", l.Tracker.LatestConsistentRaw)
+	klog.V(1).Infof("Original checkpoint:\n%s", l.Tracker.LatestConsistentRaw)
 	cp := l.Tracker.LatestConsistent
 
 	_, p, newCPRaw, err := l.Tracker.Update(ctx)
@@ -351,22 +351,22 @@ func (l *logClientTool) updateCheckpoint(ctx context.Context, args []string) err
 
 	if o := *outputCheckpoint; len(o) > 0 {
 		if err := os.WriteFile(o, newCPRaw, 0644); err != nil {
-			glog.Warningf("Failed to write latest checkpint to %q: %v", o, err)
+			klog.Warningf("Failed to write latest checkpint to %q: %v", o, err)
 		}
 	}
 
 	if lcp := l.Tracker.LatestConsistent; lcp.Size == cp.Size {
-		glog.Info("Log hasn't grown, nothing to update.")
+		klog.Info("Log hasn't grown, nothing to update.")
 		return nil
 	}
 
 	if o := *outputConsistency; len(o) > 0 {
 		if err := os.WriteFile(o, []byte(merkleProof(p).Marshal()), 0644); err != nil {
-			glog.Warningf("Failed to write consistency proof to %q: %v", o, err)
+			klog.Warningf("Failed to write consistency proof to %q: %v", o, err)
 		}
 	}
 
-	glog.Infof("Updated checkpoint:\n%s", l.Tracker.LatestConsistentRaw)
+	klog.Infof("Updated checkpoint:\n%s", l.Tracker.LatestConsistentRaw)
 
 	return nil
 }
@@ -406,7 +406,7 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 	}
 	switch resp.StatusCode {
 	case 404:
-		glog.Infof("Not found: %q", u.String())
+		klog.Infof("Not found: %q", u.String())
 		return nil, os.ErrNotExist
 	case 200:
 		break
@@ -415,7 +415,7 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			glog.Errorf("resp.Body.Close(): %v", err)
+			klog.Errorf("resp.Body.Close(): %v", err)
 		}
 	}()
 	return io.ReadAll(resp.Body)
@@ -476,10 +476,10 @@ func witnessSigVerifiers(fs []string) ([]note.Verifier, error) {
 		if err != nil {
 			return nil, err
 		}
-		glog.V(1).Infof("Found witness %q", v.Name())
+		klog.V(1).Infof("Found witness %q", v.Name())
 		vs = append(vs, v)
 	}
-	glog.V(1).Infof("Found %d witnesses", len(vs))
+	klog.V(1).Infof("Found %d witnesses", len(vs))
 	return vs, nil
 }
 
