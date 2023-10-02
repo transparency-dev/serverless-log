@@ -23,7 +23,7 @@ function main {
     echo "::debug:Pending leaf directory is ${PENDING_DIR}"
 
     # Now grab a list of all the modified/added/removed files in the PR
-    FILES=$(git diff origin/master HEAD --name-only)
+    FILES=$(git diff --name-only ${GITHUB_BASE_REF})
 
     local has_non_log_files=0
     local has_log_pending_files=0
