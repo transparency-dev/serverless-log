@@ -234,7 +234,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Integrate new entries
-	newCp, err := log.Integrate(ctx, *cp, client, h)
+	newCp, err := log.Integrate(ctx, cp.Size, client, h)
 	if err != nil {
 		http.Error(w,
 			fmt.Sprintf("Failed to integrate: %q", err),
