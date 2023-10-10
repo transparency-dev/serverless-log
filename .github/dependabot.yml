@@ -4,7 +4,7 @@ updates:
   directory: /
   groups:
     all-go-deps:
-      pattern:
+      patterns:
         - "*"
   schedule:
     interval: daily
@@ -16,7 +16,7 @@ updates:
   directory: /
   groups:
     all-gha-deps:
-      pattern:
+      patterns:
         - "*"
   schedule:
     interval: daily
@@ -28,7 +28,7 @@ updates:
   directory: /deploy/github/log/leaf_validator
   groups:
     all-docker-deps:
-      pattern:
+      patterns:
         - "*"
   schedule:
     interval: daily
@@ -40,7 +40,7 @@ updates:
   directory: /deploy/github/log/sequence_and_integrate
   groups:
     all-docker-deps:
-      pattern:
+      patterns:
         - "*"
   schedule:
     interval: daily
