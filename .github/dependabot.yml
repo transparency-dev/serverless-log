@@ -2,21 +2,49 @@ version: 2
 updates:
 - package-ecosystem: gomod
   directory: /
+  groups:
+    all-go-deps:
+      pattern:
+        - "*"
   schedule:
     interval: daily
+  commit-message:
+    prefix: ":seedling:"
+    include: "scope"
 
 - package-ecosystem: github-actions
   directory: /
+  groups:
+    all-gha-deps:
+      pattern:
+        - "*"
   schedule:
     interval: daily
+  commit-message:
+    prefix: ":seedling:"
+    include: "scope"
 
 - package-ecosystem: docker
   directory: /deploy/github/log/leaf_validator
+  groups:
+    all-docker-deps:
+      pattern:
+        - "*"
   schedule:
     interval: daily
+  commit-message:
+    prefix: ":seedling:"
+    include: "scope"
 
 - package-ecosystem: docker
   directory: /deploy/github/log/sequence_and_integrate
+  groups:
+    all-docker-deps:
+      pattern:
+        - "*"
   schedule:
     interval: daily
+  commit-message:
+    prefix: ":seedling:"
+    include: "scope"
 
