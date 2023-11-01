@@ -8,7 +8,7 @@ require (
 	github.com/transparency-dev/merkle v0.0.2
 	golang.org/x/mod v0.13.0
 	golang.org/x/sync v0.4.0
-	k8s.io/klog/v2 v2.100.1
+	k8s.io/klog/v2 v2.110.1
 )
 
-require github.com/go-logr/logr v1.2.0 // indirect
+require github.com/go-logr/logr v1.3.0 // indirect
