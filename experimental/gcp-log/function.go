@@ -104,14 +104,15 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(d.EntriesDir) == 0 {
-		http.Error(w, "Please set `entriesDir` in HTTP body to the key name for the note.",
+		http.Error(w, fmt.Sprintf("Please set `entriesDir` in HTTP body to the "+
+			"prefix name of the GCS objects in the %q bucket to sequence.", d.Bucket),
 			http.StatusBadRequest)
 		return
 	}
 
 	// init storage
 
-	ctx := context.Background()
+	ctx := r.Context()
 	client, err := storage.NewClient(ctx, os.Getenv("GCP_PROJECT"), d.Bucket)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create GCS client: %q", err), http.StatusInternalServerError)
@@ -126,28 +127,17 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check signatures
-	kmsKeyName := fmt.Sprintf(kmssigner.KeyVersionNameFormat,
-		os.Getenv("GCP_PROJECT"), d.KMSKeyLocation, d.KMSKeyRing, d.KMSKeyName, d.KMSKeyVersion)
+	// Setup KMS note signer and verifier.
 
-	kmClient, err := kms.NewKeyManagementClient(ctx)
+	kmClient, _, noteVerifier, err := setupKMS(ctx, w, os.Getenv("GCP_PROJECT"),
+		d.KMSKeyLocation, d.KMSKeyRing, d.KMSKeyName, d.KMSKeyVersion, d.NoteKeyName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create KeyManagementClient: %q", err), http.StatusInternalServerError)
+		fmt.Println(err)
+		return
 	}
 	defer kmClient.Close()
 
-	vkey, err := kmssigner.VerifierKeyString(ctx, kmClient, kmsKeyName, d.NoteKeyName)
-	if err != nil {
-		http.Error(w,
-			fmt.Sprintf("Failed to create verifier key string: %q", err),
-			http.StatusInternalServerError)
-	}
-	noteVerifier, err := note.NewVerifier(vkey)
-	if err != nil {
-		http.Error(w,
-			fmt.Sprintf("Failed to instantiate verifier: %q", err),
-			http.StatusInternalServerError)
-	}
+	// Check signatures
 
 	cp, _, _, err := fmtlog.ParseCheckpoint(cpBytes, d.Origin, noteVerifier)
 	if err != nil {
@@ -208,13 +198,51 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// setupKMS returns a KeyManagementClient, note signer, note verifier, and
+// error. If this function does not return an error, the caller is responsible
+// for calling Close() on the KeyManagementClient.
+func setupKMS(ctx context.Context, w http.ResponseWriter, gcpProject, keyLocation, keyRing,
+	keyName string, keyVersion uint, noteKeyName string) (*kms.KeyManagementClient, note.Signer, note.Verifier, error) {
+	kmsKeyName := fmt.Sprintf(kmssigner.KeyVersionNameFormat, gcpProject,
+		keyLocation, keyRing, keyName, keyVersion)
+
+	kmClient, err := kms.NewKeyManagementClient(ctx)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to create KeyManagementClient: %q", err)
+	}
+
+	noteSigner, err := kmssigner.New(ctx, kmClient, kmsKeyName, noteKeyName)
+	if err != nil {
+		defer kmClient.Close()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to instantiate signer: %q", err)
+	}
+
+	vkey, err := kmssigner.VerifierKeyString(ctx, kmClient, kmsKeyName, noteSigner.Name())
+	if err != nil {
+		defer kmClient.Close()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to create verifier key string: %q", err)
+	}
+
+	noteVerifier, err := note.NewVerifier(vkey)
+	if err != nil {
+		defer kmClient.Close()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to instantiate verifier: %q", err)
+	}
+
+	return kmClient, noteSigner, noteVerifier, nil
+}
+
 // Integrate is the entrypoint of the `integrate` GCF function.
 func Integrate(w http.ResponseWriter, r *http.Request) {
 	// process request args
 
 	d := requestData{}
 	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
-		fmt.Printf("json.NewDecoder: %v", err)
+		fmt.Sprintf("json.NewDecoder: %v\n", err)
 		http.Error(w, fmt.Sprintf("Failed to decode JSON: %q", err), http.StatusBadRequest)
 		return
 	}
@@ -223,35 +251,15 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	kmsKeyName := fmt.Sprintf(kmssigner.KeyVersionNameFormat,
-		os.Getenv("GCP_PROJECT"), d.KMSKeyLocation, d.KMSKeyRing, d.KMSKeyName, d.KMSKeyVersion)
-
-	ctx := context.Background()
-	kmClient, err := kms.NewKeyManagementClient(ctx)
+	// Setup KMS note signer and verifier.
+	ctx := r.Context()
+	kmClient, noteSigner, noteVerifier, err := setupKMS(ctx, w, os.Getenv("GCP_PROJECT"),
+		d.KMSKeyLocation, d.KMSKeyRing, d.KMSKeyName, d.KMSKeyVersion, d.NoteKeyName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create KeyManagementClient: %q", err), http.StatusInternalServerError)
-	}
-	defer kmClient.Close()
-
-	noteSigner, err := kmssigner.New(ctx, kmClient, kmsKeyName, d.NoteKeyName)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to instantiate signer: %q", err), http.StatusInternalServerError)
+		fmt.Println(err)
 		return
 	}
-
-	vkey, err := kmssigner.VerifierKeyString(ctx, kmClient, kmsKeyName, noteSigner.Name())
-	if err != nil {
-		http.Error(w,
-			fmt.Sprintf("Failed to create verifier key string: %q", err),
-			http.StatusInternalServerError)
-	}
-
-	noteVerifier, err := note.NewVerifier(vkey)
-	if err != nil {
-		http.Error(w,
-			fmt.Sprintf("Failed to instantiate verifier: %q", err),
-			http.StatusInternalServerError)
-	}
+	defer kmClient.Close()
 
 	client, err := storage.NewClient(ctx, os.Getenv("GCP_PROJECT"), d.Bucket)
 	if err != nil {
