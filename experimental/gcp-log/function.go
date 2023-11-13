@@ -23,59 +23,96 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
-	"github.com/transparency-dev/merkle/rfc6962"
-	"golang.org/x/mod/sumdb/note"
-	"google.golang.org/api/iterator"
+	"path/filepath"
 
 	"github.com/gcp_serverless_module/internal/storage"
-	"github.com/transparency-dev/serverless-log/pkg/log"
 
+	"cloud.google.com/go/kms/apiv1"
+	"github.com/transparency-dev/armored-witness/pkg/kmssigner"
 	fmtlog "github.com/transparency-dev/formats/log"
+	"github.com/transparency-dev/merkle/rfc6962"
+	"github.com/transparency-dev/serverless-log/pkg/log"
+	"golang.org/x/mod/sumdb/note"
+	"google.golang.org/api/iterator"
 )
 
-func validateCommonArgs(w http.ResponseWriter, origin string) (ok bool, pubKey string) {
-	if len(origin) == 0 {
+type requestData struct {
+	// Common args.
+	Origin         string `json:"origin"`
+	Bucket         string `json:"bucket"`
+	NoteKeyName    string `json:"noteKeyName"`
+	KMSKeyRing     string `json:"kmsKeyRing"`
+	KMSKeyName     string `json:"kmsKeyName"`
+	KMSKeyLocation string `json:"kmsKeyLocation"`
+	KMSKeyVersion  uint   `json:"kmsKeyVersion"`
+
+	// For Sequence requests.
+	EntriesDir string `json:"entriesDir"`
+
+	// For Integrate requests.
+	Initialise bool `json:"initialise"`
+}
+
+func validateCommonArgs(w http.ResponseWriter, d requestData) (ok bool) {
+	if len(d.Origin) == 0 {
 		http.Error(w, "Please set `origin` in HTTP body to log identifier.", http.StatusBadRequest)
-		return false, ""
+		return false
 	}
-
-	pubKey = os.Getenv("SERVERLESS_LOG_PUBLIC_KEY")
-	if len(pubKey) == 0 {
-		http.Error(w,
-			"Please set SERVERLESS_LOG_PUBLIC_KEY environment variable",
+	if len(d.KMSKeyRing) == 0 {
+		http.Error(w, "Please set `kmsKeyRing` in HTTP body to the signing key's key ring.",
 			http.StatusBadRequest)
-		return false, ""
+		return false
+	}
+	if len(d.KMSKeyName) == 0 {
+		http.Error(w, "Please set `kmsKeyName` in HTTP body to the signing key's name.",
+			http.StatusBadRequest)
+		return false
+	}
+	if len(d.KMSKeyLocation) == 0 {
+		http.Error(w, "Please set `kmsKeyLocation` in HTTP body to the signing key's location.",
+			http.StatusBadRequest)
+		return false
+	}
+	if d.KMSKeyVersion == 0 {
+		http.Error(w, "Please set `kmsKeyVersion` in HTTP body to the signing key's version as an integer.",
+			http.StatusBadRequest)
+		return false
+	}
+	if len(d.NoteKeyName) == 0 {
+		http.Error(w, "Please set `noteKeyName` in HTTP body to the key name for the note.",
+			http.StatusBadRequest)
+		return false
 	}
 
-	return true, pubKey
+	return true
 }
 
 // Sequence is the entrypoint of the `sequence` GCF function.
 func Sequence(w http.ResponseWriter, r *http.Request) {
 	// TODO(jayhou): validate that EntriesDir is only touching the log path.
 
-	var d struct {
-		Bucket     string `json:"bucket"`
-		EntriesDir string `json:"entriesDir"`
-		Origin     string `json:"origin"`
-	}
+	// process request args
 
+	d := requestData{}
 	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
-		code := http.StatusBadRequest
 		fmt.Printf("json.NewDecoder: %v", err)
-		http.Error(w, http.StatusText(code), code)
+		http.Error(w, fmt.Sprintf("Failed to decode JSON: %q", err), http.StatusBadRequest)
 		return
 	}
 
-	ok, pubKey := validateCommonArgs(w, d.Origin)
-	if !ok {
+	if ok := validateCommonArgs(w, d); !ok {
+		return
+	}
+	if len(d.EntriesDir) == 0 {
+		http.Error(w, fmt.Sprintf("Please set `entriesDir` in HTTP body to the "+
+			"prefix name of the GCS objects in the %q bucket to sequence.", d.Bucket),
+			http.StatusBadRequest)
 		return
 	}
 
 	// init storage
 
-	ctx := context.Background()
+	ctx := r.Context()
 	client, err := storage.NewClient(ctx, os.Getenv("GCP_PROJECT"), d.Bucket)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create GCS client: %q", err), http.StatusInternalServerError)
@@ -84,19 +121,25 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 
 	// Read the current log checkpoint to retrieve next sequence number.
 
-	cpRaw, err := client.ReadCheckpoint(ctx)
+	cpBytes, err := client.ReadCheckpoint(ctx)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read log checkpoint: %q", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Check signatures
-	v, err := note.NewVerifier(pubKey)
+	// Setup KMS note signer and verifier.
+
+	kmClient, _, noteVerifier, err := setupKMS(ctx, w, os.Getenv("GCP_PROJECT"),
+		d.KMSKeyLocation, d.KMSKeyRing, d.KMSKeyName, d.KMSKeyVersion, d.NoteKeyName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to instantiate Verifier: %q", err), http.StatusInternalServerError)
+		fmt.Println(err)
 		return
 	}
-	cp, _, _, err := fmtlog.ParseCheckpoint(cpRaw, d.Origin, v)
+	defer kmClient.Close()
+
+	// Check signatures
+
+	cp, _, _, err := fmtlog.ParseCheckpoint(cpBytes, d.Origin, noteVerifier)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to parse Checkpoint: %q", err), http.StatusInternalServerError)
 		return
@@ -119,11 +162,12 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Skip this directory - only add files under it.
-		if attrs.Name == d.EntriesDir {
+		if filepath.Clean(attrs.Name) == filepath.Clean(d.EntriesDir) {
 			continue
 		}
 
 		bytes, err := client.GetObjectData(ctx, attrs.Name)
+		fmt.Printf("Sequencing object %q with content %q\n", attrs.Name, string(bytes))
 		if err != nil {
 			http.Error(w,
 				fmt.Sprintf("Failed to get data of object %q: %q", attrs.Name, err),
@@ -154,39 +198,69 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// setupKMS returns a KeyManagementClient, note signer, note verifier, and
+// error. If this function does not return an error, the caller is responsible
+// for calling Close() on the KeyManagementClient.
+func setupKMS(ctx context.Context, w http.ResponseWriter, gcpProject, keyLocation, keyRing,
+	keyName string, keyVersion uint, noteKeyName string) (*kms.KeyManagementClient, note.Signer, note.Verifier, error) {
+	kmsKeyName := fmt.Sprintf(kmssigner.KeyVersionNameFormat, gcpProject,
+		keyLocation, keyRing, keyName, keyVersion)
+
+	kmClient, err := kms.NewKeyManagementClient(ctx)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to create KeyManagementClient: %q", err)
+	}
+
+	noteSigner, err := kmssigner.New(ctx, kmClient, kmsKeyName, noteKeyName)
+	if err != nil {
+		defer kmClient.Close()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to instantiate signer: %q", err)
+	}
+
+	vkey, err := kmssigner.VerifierKeyString(ctx, kmClient, kmsKeyName, noteSigner.Name())
+	if err != nil {
+		defer kmClient.Close()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to create verifier key string: %q", err)
+	}
+
+	noteVerifier, err := note.NewVerifier(vkey)
+	if err != nil {
+		defer kmClient.Close()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, nil, nil, fmt.Errorf("Failed to instantiate verifier: %q", err)
+	}
+
+	return kmClient, noteSigner, noteVerifier, nil
+}
+
 // Integrate is the entrypoint of the `integrate` GCF function.
 func Integrate(w http.ResponseWriter, r *http.Request) {
-	var d struct {
-		Origin     string `json:"origin"`
-		Initialise bool   `json:"initialise"`
-		Bucket     string `json:"bucket"`
-	}
+	// process request args
 
+	d := requestData{}
 	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
-		fmt.Printf("json.NewDecoder: %v", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		fmt.Sprintf("json.NewDecoder: %v\n", err)
+		http.Error(w, fmt.Sprintf("Failed to decode JSON: %q", err), http.StatusBadRequest)
 		return
 	}
 
-	ok, pubKey := validateCommonArgs(w, d.Origin)
-	if !ok {
+	if ok := validateCommonArgs(w, d); !ok {
 		return
 	}
 
-	privKey := os.Getenv("SERVERLESS_LOG_PRIVATE_KEY")
-	if len(privKey) == 0 {
-		http.Error(w,
-			"Please set SERVERLESS_LOG_PUBLIC_KEY environment variable",
-			http.StatusBadRequest)
-	}
-
-	s, err := note.NewSigner(privKey)
+	// Setup KMS note signer and verifier.
+	ctx := r.Context()
+	kmClient, noteSigner, noteVerifier, err := setupKMS(ctx, w, os.Getenv("GCP_PROJECT"),
+		d.KMSKeyLocation, d.KMSKeyRing, d.KMSKeyName, d.KMSKeyVersion, d.NoteKeyName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to instantiate signer: %q", err), http.StatusInternalServerError)
+		fmt.Println(err)
 		return
 	}
+	defer kmClient.Close()
 
-	ctx := context.Background()
 	client, err := storage.NewClient(ctx, os.Getenv("GCP_PROJECT"), d.Bucket)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create GCS client: %v", err), http.StatusBadRequest)
@@ -204,7 +278,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		cp := fmtlog.Checkpoint{
 			Hash: h.EmptyRoot(),
 		}
-		if err := signAndWrite(ctx, &cp, cpNote, s, client, d.Origin); err != nil {
+		if err := signAndWrite(ctx, &cp, cpNote, noteSigner, client, d.Origin); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to sign: %q", err), http.StatusInternalServerError)
 		}
 		fmt.Fprintf(w, fmt.Sprintf("Initialised log at %s.", d.Bucket))
@@ -220,13 +294,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check signatures
-	v, err := note.NewVerifier(pubKey)
-	if err != nil {
-		http.Error(w,
-			fmt.Sprintf("Failed to instantiate Verifier: %q", err),
-			http.StatusInternalServerError)
-	}
-	cp, _, _, err := fmtlog.ParseCheckpoint(cpRaw, d.Origin, v)
+	cp, _, _, err := fmtlog.ParseCheckpoint(cpRaw, d.Origin, noteVerifier)
 	if err != nil {
 		http.Error(w,
 			fmt.Sprintf("Failed to open Checkpoint: %q", err),
@@ -245,7 +313,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Nothing to integrate", http.StatusInternalServerError)
 	}
 
-	err = signAndWrite(ctx, newCp, cpNote, s, client, d.Origin)
+	err = signAndWrite(ctx, newCp, cpNote, noteSigner, client, d.Origin)
 	if err != nil {
 		http.Error(w,
 			fmt.Sprintf("Failed to sign: %q", err),
