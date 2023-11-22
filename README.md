@@ -187,6 +187,10 @@ of updating the log state.
 For more details, including example GitHub Action configs, see
 [here](./deploy/github).
 
+## Support
+
+- Slack: https://transparency-dev.slack.com/ ([invitation](https://join.slack.com/t/transparency-dev/shared_invite/zt-27pkqo21d-okUFhur7YZ0rFoJVIOPznQ))
+
 ## TODO
 
 - [X] Document structure, design, etc.
