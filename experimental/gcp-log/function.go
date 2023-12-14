@@ -188,13 +188,13 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 					http.StatusInternalServerError)
 				return
 			}
-
-			l := fmt.Sprintf("Sequence num %d assigned to %s", seq, attrs.Name)
-			if dupe {
-				l += " (dupe)"
-			}
-			fmt.Println(l)
 		}
+
+		l := fmt.Sprintf("Sequence num %d assigned to %s", seq, attrs.Name)
+		if dupe {
+			l += " (dupe)"
+		}
+		fmt.Println(l)
 	}
 }
 
