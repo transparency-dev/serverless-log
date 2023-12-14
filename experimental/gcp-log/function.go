@@ -51,6 +51,9 @@ type requestData struct {
 
 	// For Integrate requests.
 	Initialise bool `json:"initialise"`
+
+	// For Integrate requests.
+	CreateBucket bool `json:"createBucket"`
 }
 
 func validateCommonArgs(w http.ResponseWriter, d requestData) (ok bool) {
@@ -270,9 +273,11 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 	var cpNote note.Note
 	h := rfc6962.DefaultHasher
 	if d.Initialise {
-		if err := client.Create(ctx, d.Bucket); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to create bucket for log: %v", err), http.StatusBadRequest)
-			return
+		if d.createBucket {
+			if err := client.Create(ctx, d.Bucket); err != nil {
+				http.Error(w, fmt.Sprintf("Failed to create bucket for log: %v", err), http.StatusBadRequest)
+				return
+			}
 		}
 
 		cp := fmtlog.Checkpoint{
