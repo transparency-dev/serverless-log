@@ -67,13 +67,19 @@ Both functions are HTTP-triggered and run when their respective endpoints are re
 Set up a log and write to the log via GCF invocation.
 
 1. Initialize a log:
+   (Add a `"createBucket": true` line to the request data below if you want the function to attempt to create the bucket)
 
     ```bash
     gcloud functions call integrate \
     --data '{
         "initialise": true,
         "origin": "${ORIGIN}",
-        "bucket": "${LOG_NAME}"
+        "bucket": "${LOG_NAME}",
+        "kmsKeyRing": "firmware-release-ci",
+        "kmsKeyName": "${KMS_KEY_NAME}",
+        "kmsKeyVersion": ${KMS_KEY_VERSION}, 
+        "kmsKeyLocation": "${KMS_KEY_LOCATION}",
+        "noteKeyName": "${NOTE_SIGNING_NAME}",
     }'
     ```
 
@@ -94,6 +100,11 @@ Set up a log and write to the log via GCF invocation.
     gcloud functions call integrate \
     --data '{
         "origin": "${ORIGIN}",
-        "bucket": "${LOG_NAME}"
+        "bucket": "${LOG_NAME}",
+        "kmsKeyRing": "firmware-release-ci",
+        "kmsKeyName": "${KMS_KEY_NAME}",
+        "kmsKeyVersion": ${KMS_KEY_VERSION}, 
+        "kmsKeyLocation": "${KMS_KEY_LOCATION}",
+        "noteKeyName": "${NOTE_SIGNING_NAME}",
     }'
     ```
