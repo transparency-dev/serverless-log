@@ -36,7 +36,7 @@ Both functions are HTTP-triggered and run when their respective endpoints are re
     --entry-point Integrate \
     --runtime go120 \
     --trigger-http \
-    --set-env-vars "GCP_PROJECT=${PROJECT_NAME},SERVERLESS_LOG_PUBLIC_KEY=${PUBLIC_KEY},SERVERLESS_LOG_PRIVATE_KEY=${PRIVATE_KEY}" \
+    --set-env-vars "GCP_PROJECT=${PROJECT_NAME}" \
     --source=./experimental/gcp-log \
     --max-instances 1
     ```
@@ -48,7 +48,7 @@ Both functions are HTTP-triggered and run when their respective endpoints are re
     --entry-point Sequence \
     --runtime go120 \
     --trigger-http \
-    --set-env-vars "GCP_PROJECT=${PROJECT_NAME},SERVERLESS_LOG_PUBLIC_KEY=${PUBLIC_KEY}" \
+    --set-env-vars "GCP_PROJECT=${PROJECT_NAME}" \
     --source=./experimental/gcp-log \
     --max-instances 1
     ```
