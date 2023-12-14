@@ -48,7 +48,7 @@ func mustMakeVerifier(vs string) note.Verifier {
 
 func mustLoadTestCheckpoints() ([][]byte, []log.Checkpoint) {
 	raws, cps := make([][]byte, 0), make([]log.Checkpoint, 0)
-	for i := 1; ; i++ {
+	for i := 0; ; i++ {
 		cpName := fmt.Sprintf("checkpoint.%d", i)
 		r, err := testLogFetcher(context.Background(), cpName)
 		if err != nil {
@@ -333,5 +333,18 @@ func TestNodeCacheHandlesInvalidRequest(t *testing.T) {
 
 	if _, err := nc.GetNode(ctx, compact.NewNodeID(0, 1)); err == nil {
 		t.Error("got no error, want error because ID is out of range")
+	}
+}
+
+func TestHandleZeroRoot(t *testing.T) {
+	zeroCP := testCheckpoints[0]
+	if zeroCP.Size != 0 {
+		t.Fatal("BadData: checkpoint has non-zero size")
+	}
+	if len(zeroCP.Hash) == 0 {
+		t.Fatal("BadTestData: checkpoint.0 has empty root hash")
+	}
+	if _, err := NewProofBuilder(context.Background(), zeroCP, rfc6962.DefaultHasher.HashChildren, testLogFetcher); err != nil {
+		t.Fatalf("NewProofBuilder: %v", err)
 	}
 }
