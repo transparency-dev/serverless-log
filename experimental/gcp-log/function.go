@@ -25,10 +25,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"google3/third_party/golang/cloud_google_com/go/kms/v/v1/apiv1/kms"
-
 	"github.com/gcp_serverless_module/internal/storage"
 
+	"cloud.google.com/go/kms/apiv1"
 	"github.com/transparency-dev/armored-witness/pkg/kmssigner"
 	fmtlog "github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle/rfc6962"
