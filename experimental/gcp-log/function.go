@@ -343,7 +343,9 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func signAndWrite(ctx context.Context, cp *fmtlog.Checkpoint, cpNote note.Note, s note.Signer, client *storage.Client, origin string) error {
+// signAndWrite signs a checkpoint and writes the new checkpoint to GCS.
+func signAndWrite(ctx context.Context, cp *fmtlog.Checkpoint, cpNote note.Note,
+	s note.Signer, client *storage.Client, origin string) error {
 	cp.Origin = origin
 	cpNote.Text = string(cp.Marshal())
 	cpNoteSigned, err := note.Sign(&cpNote, s)
