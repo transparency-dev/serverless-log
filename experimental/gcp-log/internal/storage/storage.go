@@ -62,6 +62,21 @@ type Client struct {
 	otherCacheControl      string
 }
 
+// ClientOpts holds configuration options for the storage client.
+type ClientOpts struct {
+	// ProjectID is the GCP project which hosts the storage bucket for the log.
+	ProjectID string
+	// Bucket is the name of the bucket to use for storing log state.
+	Bucket string
+	// CheckpointCacheControl, if set, will cause the Cache-Control header associated with the
+	// checkpoint object to be set to this value. If unset, the current GCP default will be used.
+	CheckpointCacheControl string
+	// OtherCacheControl, if set, will cause the Cache-Control header associated with the
+	// all non-checkpoint objects to be set to this value. If unset, the current GCP default
+	// will be used.
+	OtherCacheControl string
+}
+
 // NewClient returns a Client which allows interaction with the log stored in
 // the specified bucket on GCS.
 func NewClient(ctx context.Context, opts ClientOpts) (*Client, error) {
@@ -131,7 +146,14 @@ func (c *Client) WriteCheckpoint(ctx context.Context, newCPRaw []byte) error {
 	bkt := c.gcsClient.Bucket(c.bucket)
 	obj := bkt.Object(layout.CheckpointPath)
 
-	w := obj.If(gcs.Conditions{GenerationMatch: c.checkpointGen}).NewWriter(ctx)
+	var cond gcs.Conditions
+	if c.checkpointGen == 0 {
+		cond = gcs.Conditions{DoesNotExist: true}
+	} else {
+		cond = gcs.Conditions{GenerationMatch: c.checkpointGen}
+	}
+
+	w := obj.If(cond).NewWriter(ctx)
 	if c.checkpointCacheControl != "" {
 		w.ObjectAttrs.CacheControl = c.checkpointCacheControl
 	}
@@ -161,8 +183,7 @@ func (c *Client) ReadCheckpoint(ctx context.Context) ([]byte, error) {
 	}
 	defer r.Close()
 
-	content, err := io.ReadAll(r)
-	return content, err
+	return io.ReadAll(r)
 }
 
 // GetTile returns the tile at the given tile-level and tile-index.
