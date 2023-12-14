@@ -75,7 +75,7 @@ Set up a log and write to the log via GCF invocation.
         "initialise": true,
         "origin": "${ORIGIN}",
         "bucket": "${LOG_NAME}",
-        "kmsKeyRing": "firmware-release-ci",
+        "kmsKeyRing": "${KMS_KEY_RING}",
         "kmsKeyName": "${KMS_KEY_NAME}",
         "kmsKeyVersion": ${KMS_KEY_VERSION}, 
         "kmsKeyLocation": "${KMS_KEY_LOCATION}",
@@ -101,7 +101,7 @@ Set up a log and write to the log via GCF invocation.
     --data '{
         "origin": "${ORIGIN}",
         "bucket": "${LOG_NAME}",
-        "kmsKeyRing": "firmware-release-ci",
+        "kmsKeyRing": "${KMS_KEY_RING}",
         "kmsKeyName": "${KMS_KEY_NAME}",
         "kmsKeyVersion": ${KMS_KEY_VERSION}, 
         "kmsKeyLocation": "${KMS_KEY_LOCATION}",
