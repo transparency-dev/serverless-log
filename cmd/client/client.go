@@ -90,6 +90,7 @@ func usage() {
 }
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 	ctx := context.Background()
 

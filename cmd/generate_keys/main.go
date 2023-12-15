@@ -33,6 +33,7 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	if len(*keyName) == 0 {
