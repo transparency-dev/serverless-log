@@ -92,6 +92,11 @@ func NewProofBuilder(ctx context.Context, cp log.Checkpoint, h compact.HashFn, f
 		nodeCache: newNodeCache(tf, cp.Size),
 		h:         h,
 	}
+	// Can't re-create the root of a zero size checkpoint other than by convention,
+	// so return early here in that case.
+	if cp.Size == 0 {
+		return pb, nil
+	}
 
 	hashes, err := FetchRangeNodes(ctx, cp.Size, tf)
 	if err != nil {
