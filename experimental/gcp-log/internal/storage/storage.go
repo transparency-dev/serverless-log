@@ -54,20 +54,40 @@ type Client struct {
 	// Note that nextSeq may be <= than the actual next available number, but
 	// never greater.
 	nextSeq uint64
+
+	checkpointCacheControl string
+	otherCacheControl      string
+}
+
+// ClientOpts holds configuration options for the storage client.
+type ClientOpts struct {
+	// ProjectID is the GCP project which hosts the storage bucket for the log.
+	ProjectID string
+	// Bucket is the name of the bucket to use for storing log state.
+	Bucket string
+	// CheckpointCacheControl, if set, will cause the Cache-Control header associated with the
+	// checkpoint object to be set to this value. If unset, the current GCP default will be used.
+	CheckpointCacheControl string
+	// OtherCacheControl, if set, will cause the Cache-Control header associated with the
+	// all non-checkpoint objects to be set to this value. If unset, the current GCP default
+	// will be used.
+	OtherCacheControl string
 }
 
 // NewClient returns a Client which allows interaction with the log stored in
 // the specified bucket on GCS.
-func NewClient(ctx context.Context, projectID, bucket string) (*Client, error) {
+func NewClient(ctx context.Context, opts ClientOpts) (*Client, error) {
 	c, err := gcs.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		gcsClient: c,
-		projectID: projectID,
-		bucket:    bucket,
+		gcsClient:              c,
+		projectID:              opts.ProjectID,
+		bucket:                 opts.Bucket,
+		checkpointCacheControl: opts.CheckpointCacheControl,
+		otherCacheControl:      opts.OtherCacheControl,
 	}, nil
 }
 
@@ -121,6 +141,9 @@ func (c *Client) WriteCheckpoint(ctx context.Context, newCPRaw []byte) error {
 	bkt := c.gcsClient.Bucket(c.bucket)
 	obj := bkt.Object(layout.CheckpointPath)
 	w := obj.NewWriter(ctx)
+	if c.checkpointCacheControl != "" {
+		w.ObjectAttrs.CacheControl = c.checkpointCacheControl
+	}
 	if _, err := w.Write(newCPRaw); err != nil {
 		return err
 	}
@@ -297,6 +320,9 @@ func (c *Client) Sequence(ctx context.Context, leafhash []byte, leaf []byte) (ui
 		// This may exist if there is more than one instance of the sequencer
 		// writing to the same log.
 		w := bkt.Object(seqPath).If(gcs.Conditions{DoesNotExist: true}).NewWriter(ctx)
+		if c.otherCacheControl != "" {
+			w.ObjectAttrs.CacheControl = c.otherCacheControl
+		}
 		if _, err := w.Write(leaf); err != nil {
 			return 0, fmt.Errorf("failed to write seq file: %w", err)
 		}
@@ -321,6 +347,9 @@ func (c *Client) Sequence(ctx context.Context, leafhash []byte, leaf []byte) (ui
 		// file above but before doing this, a resubmission of the same leafhash
 		// would be permitted.
 		wLeaf := bkt.Object(leafPath).NewWriter(ctx)
+		if c.otherCacheControl != "" {
+			w.ObjectAttrs.CacheControl = c.otherCacheControl
+		}
 		if _, err := wLeaf.Write([]byte(strconv.FormatUint(seq, 16))); err != nil {
 			return 0, fmt.Errorf("couldn't create leafhash object: %w", err)
 		}
@@ -355,34 +384,11 @@ func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.T
 	obj := bkt.Object(tPath)
 
 	w := obj.NewWriter(ctx)
+	if c.otherCacheControl != "" {
+		w.ObjectAttrs.CacheControl = c.otherCacheControl
+	}
 	if _, err := w.Write(t); err != nil {
 		return fmt.Errorf("failed to write tile object %q to bucket %q: %w", tPath, c.bucket, err)
 	}
 	return w.Close()
-
-	if tileSize == 256 {
-		// Get partial files.
-		it := bkt.Objects(ctx, &gcs.Query{
-			Prefix: tPath,
-			// Without specifying a delimiter, the objects returned may be
-			// recursively under "directories". Specifying a delimiter only returns
-			// objects under the given prefix path "directory".
-			Delimiter: "/",
-		})
-		for {
-			attrs, err := it.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("failed to get object %q from bucket %q: %v", tPath, c.bucket, err)
-			}
-
-			if _, err := bkt.Object(attrs.Name).NewWriter(ctx).Write(t); err != nil {
-				return fmt.Errorf("failed to copy full tile to partials object %q in bucket %q: %v", attrs.Name, c.bucket, err)
-			}
-		}
-	}
-
-	return nil
 }
