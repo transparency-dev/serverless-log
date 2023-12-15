@@ -320,10 +320,10 @@ func (c *Client) Sequence(ctx context.Context, leafhash []byte, leaf []byte) (ui
 		// This may exist if there is more than one instance of the sequencer
 		// writing to the same log.
 		w := bkt.Object(seqPath).If(gcs.Conditions{DoesNotExist: true}).NewWriter(ctx)
+		if c.otherCacheControl != "" {
+			w.ObjectAttrs.CacheControl = c.otherCacheControl
+		}
 		if _, err := w.Write(leaf); err != nil {
-			if c.otherCacheControl != "" {
-				w.ObjectAttrs.CacheControl = c.otherCacheControl
-			}
 			return 0, fmt.Errorf("failed to write seq file: %w", err)
 		}
 		if err := w.Close(); err != nil {
