@@ -391,30 +391,4 @@ func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.T
 		return fmt.Errorf("failed to write tile object %q to bucket %q: %w", tPath, c.bucket, err)
 	}
 	return w.Close()
-
-	if tileSize == 256 {
-		// Get partial files.
-		it := bkt.Objects(ctx, &gcs.Query{
-			Prefix: tPath,
-			// Without specifying a delimiter, the objects returned may be
-			// recursively under "directories". Specifying a delimiter only returns
-			// objects under the given prefix path "directory".
-			Delimiter: "/",
-		})
-		for {
-			attrs, err := it.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("failed to get object %q from bucket %q: %v", tPath, c.bucket, err)
-			}
-
-			if _, err := bkt.Object(attrs.Name).NewWriter(ctx).Write(t); err != nil {
-				return fmt.Errorf("failed to copy full tile to partials object %q in bucket %q: %v", attrs.Name, c.bucket, err)
-			}
-		}
-	}
-
-	return nil
 }
