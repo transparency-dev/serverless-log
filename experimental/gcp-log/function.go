@@ -27,7 +27,7 @@ import (
 
 	"github.com/gcp_serverless_module/internal/storage"
 
-	"cloud.google.com/go/kms/apiv1"
+	kms "cloud.google.com/go/kms/apiv1"
 	"github.com/transparency-dev/armored-witness/pkg/kmssigner"
 	fmtlog "github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle/rfc6962"
@@ -45,6 +45,11 @@ type requestData struct {
 	KMSKeyName     string `json:"kmsKeyName"`
 	KMSKeyLocation string `json:"kmsKeyLocation"`
 	KMSKeyVersion  uint   `json:"kmsKeyVersion"`
+
+	// Cache-Control header for checkpoint objects
+	CheckpointCacheControl string `json:"checkpointCacheControl"`
+	// Cache-Control header for non-checkpoint objects
+	OtherCacheControl string `json:"otherCacheControl"`
 
 	// For Sequence requests.
 	EntriesDir string `json:"entriesDir"`
@@ -90,6 +95,16 @@ func validateCommonArgs(w http.ResponseWriter, d requestData) (ok bool) {
 	return true
 }
 
+// newClient returns a storage Client built for the request args.
+func newClient(ctx context.Context, d requestData) (*storage.Client, error) {
+	return storage.NewClient(ctx, storage.ClientOpts{
+		ProjectID:              os.Getenv("GCP_PROJECT"),
+		Bucket:                 d.Bucket,
+		CheckpointCacheControl: d.CheckpointCacheControl,
+		OtherCacheControl:      d.OtherCacheControl,
+	})
+}
+
 // Sequence is the entrypoint of the `sequence` GCF function.
 func Sequence(w http.ResponseWriter, r *http.Request) {
 	// TODO(jayhou): validate that EntriesDir is only touching the log path.
@@ -116,7 +131,7 @@ func Sequence(w http.ResponseWriter, r *http.Request) {
 	// init storage
 
 	ctx := r.Context()
-	client, err := storage.NewClient(ctx, os.Getenv("GCP_PROJECT"), d.Bucket)
+	client, err := newClient(ctx, d)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create GCS client: %q", err), http.StatusInternalServerError)
 		return
@@ -264,7 +279,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer kmClient.Close()
 
-	client, err := storage.NewClient(ctx, os.Getenv("GCP_PROJECT"), d.Bucket)
+	client, err := newClient(ctx, d)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create GCS client: %v", err), http.StatusBadRequest)
 		return

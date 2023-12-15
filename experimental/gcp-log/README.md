@@ -105,3 +105,13 @@ Set up a log and write to the log via GCF invocation.
         "noteKeyName": "${NOTE_SIGNING_NAME}"
     }'
     ```
+
+### Cache-control
+
+The following two optional parameters can be added to all function calls to customise the
+`Cache-Control` headers associated with the log artefacts:
+
+* `checkpointCacheControl`, if supplied, sets the `Cache-Control` header for the `checkpoint` object.
+* `otherCacheControl`, if supplied, sets the `Cache-Control` header for all other objects.
+
+The values for these parameters should be a valid [Cache-Control](https://cloud.google.com/storage/docs/metadata#cache-control) metadata string, e.g. `public, max-age=3600`.
