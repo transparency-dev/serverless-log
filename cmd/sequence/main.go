@@ -42,6 +42,7 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	// Read log public key from file or environment variable
