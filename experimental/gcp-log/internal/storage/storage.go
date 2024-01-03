@@ -54,6 +54,9 @@ type Client struct {
 	// Note that nextSeq may be <= than the actual next available number, but
 	// never greater.
 	nextSeq uint64
+	// checkpointGen is the GCS object generation number that this client last
+	// read. This is useful for read-modify-write operation of the checkpoint.
+	checkpointGen int64
 
 	checkpointCacheControl string
 	otherCacheControl      string
@@ -86,6 +89,7 @@ func NewClient(ctx context.Context, opts ClientOpts) (*Client, error) {
 		gcsClient:              c,
 		projectID:              opts.ProjectID,
 		bucket:                 opts.Bucket,
+		checkpointGen:          0,
 		checkpointCacheControl: opts.CheckpointCacheControl,
 		otherCacheControl:      opts.OtherCacheControl,
 	}, nil
@@ -136,17 +140,27 @@ func (c *Client) SetNextSeq(num uint64) {
 	c.nextSeq = num
 }
 
-// WriteCheckpoint stores a raw log checkpoint on GCS.
+// WriteCheckpoint stores a raw log checkpoint on GCS if it matches the
+// generation that the client thinks the checkpoint is.
 func (c *Client) WriteCheckpoint(ctx context.Context, newCPRaw []byte) error {
 	bkt := c.gcsClient.Bucket(c.bucket)
 	obj := bkt.Object(layout.CheckpointPath)
-	w := obj.NewWriter(ctx)
+
+	var cond gcs.Conditions
+	if c.checkpointGen == 0 {
+		cond = gcs.Conditions{DoesNotExist: true}
+	} else {
+		cond = gcs.Conditions{GenerationMatch: c.checkpointGen}
+	}
+
+	w := obj.If(cond).NewWriter(ctx)
 	if c.checkpointCacheControl != "" {
 		w.ObjectAttrs.CacheControl = c.checkpointCacheControl
 	}
 	if _, err := w.Write(newCPRaw); err != nil {
 		return err
 	}
+	c.checkpointGen++
 	return w.Close()
 }
 
@@ -155,6 +169,14 @@ func (c *Client) ReadCheckpoint(ctx context.Context) ([]byte, error) {
 	bkt := c.gcsClient.Bucket(c.bucket)
 	obj := bkt.Object(layout.CheckpointPath)
 
+	// Get the GCS generation number.
+	attrs, err := obj.Attrs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Object(%q).Attrs: %w", obj, err)
+	}
+	c.checkpointGen = attrs.Generation
+
+	// Get the content of the checkpoint.
 	r, err := obj.NewReader(ctx)
 	if err != nil {
 		return nil, err
