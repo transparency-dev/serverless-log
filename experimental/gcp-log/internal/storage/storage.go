@@ -405,7 +405,8 @@ func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.T
 	tPath := filepath.Join(layout.TilePath("", level, index, tileSize%256))
 	obj := bkt.Object(tPath)
 
-	w := obj.NewWriter(ctx)
+	// Tiles, partial or full, should only be written once.
+	w := obj.If(gcs.Conditions{DoesNotExist: true}).NewWriter(ctx)
 	if c.otherCacheControl != "" {
 		w.ObjectAttrs.CacheControl = c.otherCacheControl
 	}
