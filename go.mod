@@ -7,7 +7,7 @@ require (
 	github.com/transparency-dev/formats v0.0.0-20230914071414-5732692f1e50
 	github.com/transparency-dev/merkle v0.0.2
 	golang.org/x/mod v0.14.0
-	golang.org/x/sync v0.5.0
+	golang.org/x/sync v0.6.0
 	k8s.io/klog/v2 v2.110.1
 )
 
