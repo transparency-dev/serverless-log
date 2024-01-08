@@ -392,20 +392,13 @@ func (c *Client) assertContent(ctx context.Context, gcsPath string, data []byte)
 	obj := bkt.Object(gcsPath)
 	r, err := obj.NewReader(ctx)
 	if err != nil {
-		if errors.Is(err, gcs.ErrObjectNotExist) {
-			// Return the generic NotExist error so that tileCache.Visit can differentiate
-			// between this and other errors.
-			return false, err
-		}
-
-		klog.V(2).Infof("GetTile: failed to create reader for object %q in bucket %q: %v",
+		klog.V(2).Infof("assertContent: failed to create reader for object %q in bucket %q: %v",
 			gcsPath, c.bucket, err)
 		return false, err
 	}
 	defer r.Close()
 
-	var gcsData []byte
-	gcsData, err = io.ReadAll(r)
+	gcsData, err := io.ReadAll(r)
 	if err != nil {
 		return false, err
 	}
@@ -435,28 +428,36 @@ func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.T
 
 	// Pass an empty rootDir since we don't need this concept in GCS.
 	tPath := filepath.Join(layout.TilePath("", level, index, tileSize%256))
-
-	// Check that either we are writing the tile for the first time, or that the
-	// write would be a no-op since the content is the same.
-	//
-	// gcs.ErrObjectNotExist is okay, we will just write the tile below.
-	if equal, err := c.assertContent(ctx, tPath, t); err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
-		return fmt.Errorf("failed to read content of %q: %w", tPath, err)
-	} else if err == nil && !equal {
-		return fmt.Errorf("assertion that tile content for %q has not changed failed", tPath)
-	} else if err == nil && equal {
-		klog.V(2).Infof("StoreTile: Tile already exists for level %d index %x ts: %x", level, index, tileSize)
-		return nil
-	}
-
 	obj := bkt.Object(tPath)
 
-	w := obj.NewWriter(ctx)
+	// Tiles, partial or full, should only be written once.
+	w := obj.If(gcs.Conditions{DoesNotExist: true}).NewWriter(ctx)
 	if c.otherCacheControl != "" {
 		w.ObjectAttrs.CacheControl = c.otherCacheControl
 	}
 	if _, err := w.Write(t); err != nil {
 		return fmt.Errorf("failed to write tile object %q to bucket %q: %w", tPath, c.bucket, err)
 	}
-	return w.Close()
+
+	if err := w.Close(); err != nil {
+		switch ee := err.(type) {
+		case *googleapi.Error:
+			// If we run into a precondition failure error, check that the object
+			// which exists contains the same content that we want to write.
+			if ee.Code == http.StatusPreconditionFailed {
+				if equal, err := c.assertContent(ctx, tPath, t); err != nil {
+					return fmt.Errorf("failed to read content of %q: %w", tPath, err)
+				} else if !equal {
+					return fmt.Errorf("assertion that tile content for %q has not changed failed", tPath)
+				} else if equal {
+					klog.V(2).Infof("StoreTile: Tile already exists for level %d index %x ts: %x", level, index, tileSize)
+					return nil
+				}
+			}
+		default:
+			return err
+		}
+	}
+
+	return nil
 }
