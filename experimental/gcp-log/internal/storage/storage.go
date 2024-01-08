@@ -16,6 +16,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -376,12 +377,43 @@ func (c *Client) Sequence(ctx context.Context, leafhash []byte, leaf []byte) (ui
 			return 0, fmt.Errorf("couldn't create leafhash object: %w", err)
 		}
 		if err := wLeaf.Close(); err != nil {
-			return 0, fmt.Errorf("couldn't close writer for object %q", leafPath)
+			return 0, fmt.Errorf("couldn't close writer for object %q, %w", leafPath, err)
 		}
 
 		// All done!
 		return seq, nil
 	}
+}
+
+// assertContent checks that the content at `gcsPath` matches the passed in `data`.
+func (c *Client) assertContent(ctx context.Context, gcsPath string, data []byte) (equal bool, err error) {
+	bkt := c.gcsClient.Bucket(c.bucket)
+
+	obj := bkt.Object(gcsPath)
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		if errors.Is(err, gcs.ErrObjectNotExist) {
+			// Return the generic NotExist error so that tileCache.Visit can differentiate
+			// between this and other errors.
+			return false, err
+		}
+
+		klog.V(2).Infof("GetTile: failed to create reader for object %q in bucket %q: %v",
+			gcsPath, c.bucket, err)
+		return false, err
+	}
+	defer r.Close()
+
+	var gcsData []byte
+	gcsData, err = io.ReadAll(r)
+	if err != nil {
+		return false, err
+	}
+
+	if bytes.Equal(gcsData, data) {
+		return true, nil
+	}
+	return false, nil
 }
 
 // StoreTile writes a tile out to GCS.
@@ -403,10 +435,23 @@ func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.T
 
 	// Pass an empty rootDir since we don't need this concept in GCS.
 	tPath := filepath.Join(layout.TilePath("", level, index, tileSize%256))
+
+	// Check that either we are writing the tile for the first time, or that the
+	// write would be a no-op since the content is the same.
+	//
+	// gcs.ErrObjectNotExist is okay, we will just write the tile below.
+	if equal, err := c.assertContent(ctx, tPath, t); err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
+		return fmt.Errorf("failed to read content of %q: %w", tPath, err)
+	} else if err == nil && !equal {
+		return fmt.Errorf("assertion that tile content for %q has not changed failed", tPath)
+	} else if err == nil && equal {
+		klog.V(2).Infof("StoreTile: Tile already exists for level %d index %x ts: %x", level, index, tileSize)
+		return nil
+	}
+
 	obj := bkt.Object(tPath)
 
-	// Tiles, partial or full, should only be written once.
-	w := obj.If(gcs.Conditions{DoesNotExist: true}).NewWriter(ctx)
+	w := obj.NewWriter(ctx)
 	if c.otherCacheControl != "" {
 		w.ObjectAttrs.CacheControl = c.otherCacheControl
 	}
