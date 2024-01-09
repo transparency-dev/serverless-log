@@ -311,6 +311,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w,
 			fmt.Sprintf("Failed to read log checkpoint: %q", err),
 			http.StatusInternalServerError)
+		return
 	}
 
 	// Check signatures
@@ -319,6 +320,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w,
 			fmt.Sprintf("Failed to open Checkpoint: %q", err),
 			http.StatusInternalServerError)
+		return
 	}
 
 	// Integrate new entries
@@ -330,7 +332,8 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if newCp == nil {
-		http.Error(w, "Nothing to integrate", http.StatusInternalServerError)
+		http.Error(w, "Nothing to integrate", http.StatusBadRequest)
+		return
 	}
 
 	err = signAndWrite(ctx, newCp, cpNote, noteSigner, client, d.Origin)
@@ -338,6 +341,7 @@ func Integrate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w,
 			fmt.Sprintf("Failed to sign: %q", err),
 			http.StatusInternalServerError)
+		return
 	}
 
 	return

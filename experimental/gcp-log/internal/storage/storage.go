@@ -142,7 +142,12 @@ func (c *Client) SetNextSeq(num uint64) {
 }
 
 // WriteCheckpoint stores a raw log checkpoint on GCS if it matches the
-// generation that the client thinks the checkpoint is.
+// generation that the client thinks the checkpoint is. The client updates the
+// generation number of the checkpoint whenever ReadCheckpoint is called.
+//
+// This method will fail to write if 1) the checkpoint exists and the client
+// has never read it or 2) the checkpoint has been updated since the client
+// called ReadCheckpoint.
 func (c *Client) WriteCheckpoint(ctx context.Context, newCPRaw []byte) error {
 	bkt := c.gcsClient.Bucket(c.bucket)
 	obj := bkt.Object(layout.CheckpointPath)
@@ -161,7 +166,6 @@ func (c *Client) WriteCheckpoint(ctx context.Context, newCPRaw []byte) error {
 	if _, err := w.Write(newCPRaw); err != nil {
 		return err
 	}
-	c.checkpointGen++
 	return w.Close()
 }
 
