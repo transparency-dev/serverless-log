@@ -449,10 +449,10 @@ func (c *Client) StoreTile(ctx context.Context, level, index uint64, tile *api.T
 					return fmt.Errorf("failed to read content of %q: %w", tPath, err)
 				} else if !equal {
 					return fmt.Errorf("assertion that tile content for %q has not changed failed", tPath)
-				} else if equal {
-					klog.V(2).Infof("StoreTile: Tile already exists for level %d index %x ts: %x", level, index, tileSize)
-					return nil
 				}
+
+				klog.V(2).Infof("StoreTile: identical tile already exists for level %d index %x ts: %x", level, index, tileSize)
+				return nil
 			}
 		default:
 			return err
