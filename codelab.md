@@ -91,10 +91,10 @@ To add the contents of these files to the log, use the `sequence` command with t
 
 ```bash
 $ go run ./cmd/sequence --storage_dir="${LOG_DIR}" --entries "${DATA_DIR}/*"  --public_key=key.pub --origin="${LOG_ORIGIN}"
-I1221 13:16:23.940255  923589 main.go:131] 0: /tmp/files/leaf_000
-I1221 13:16:23.940806  923589 main.go:131] 1: /tmp/files/leaf_001
-I1221 13:16:23.941218  923589 main.go:131] 2: /tmp/files/leaf_002
-I1221 13:16:23.941673  923589 main.go:131] 3: /tmp/files/leaf_003
+I1221 13:16:23.940255  923589 main.go:131] 0: /tmp/myfiles/leaf_000
+I1221 13:16:23.940806  923589 main.go:131] 1: /tmp/myfiles/leaf_001
+I1221 13:16:23.941218  923589 main.go:131] 2: /tmp/myfiles/leaf_002
+I1221 13:16:23.941673  923589 main.go:131] 3: /tmp/myfiles/leaf_003
 ```
 
 The `sequence` commands assigns an index to each leaf, and stores data in the log directory using convenient
@@ -139,10 +139,10 @@ originally assigned sequence numbers:
 
 ```bash
 $ go run ./cmd/sequence --storage_dir="${LOG_DIR}" --entries "${DATA_DIR}/*"  --public_key=key.pub --origin="${LOG_ORIGIN}"
-I1221 13:18:59.735244  924268 main.go:131] 0: /tmp/files/leaf_000 (dupe)
-I1221 13:18:59.735362  924268 main.go:131] 1: /tmp/files/leaf_001 (dupe)
-I1221 13:18:59.735406  924268 main.go:131] 2: /tmp/files/leaf_002 (dupe)
-I1221 13:18:59.735447  924268 main.go:131] 3: /tmp/files/leaf_003 (dupe)
+I1221 13:18:59.735244  924268 main.go:131] 0: /tmp/myfiles/leaf_000 (dupe)
+I1221 13:18:59.735362  924268 main.go:131] 1: /tmp/myfiles/leaf_001 (dupe)
+I1221 13:18:59.735406  924268 main.go:131] 2: /tmp/myfiles/leaf_002 (dupe)
+I1221 13:18:59.735447  924268 main.go:131] 3: /tmp/myfiles/leaf_003 (dupe)
 ```
 
 ### Integrating sequenced entries
@@ -191,7 +191,7 @@ The tile directory has been populated with a file, and the checkpoint has been u
 The `leaves/` and `seq/` directories have not changed.
 
 Each tile can store a maximum of 256 leaf hashes. Since we only have 4 leaves for now, hashes
-fit in a single file. Given it is the first tile of the tree, [its path is 00/0000/00/00/00](api/layout#tile)
+fit in a single file. Given it is the first tile of the tree, [its path is 00/0000/00/00/00](api/layout#tile).
 Until the tile is filed with 256 leaves, the tile is "partial",
 that's what the `00.04` notation means: tile `00/0000/00/00/00.04` is the partial
 `00/0000/00/00/00` tile with 4 leaf hashes.
@@ -236,7 +236,7 @@ Let's add one more leaf to our tree.
 $ echo "leaf_data_004" > $DATA_DIR/leaf_004
 
 $ go run ./cmd/sequence --storage_dir="${LOG_DIR}" --entries "${DATA_DIR}/leaf_004"  --public_key=key.pub --origin="${LOG_ORIGIN}"
-I1221 13:23:43.956356  926120 main.go:131] 4: /tmp/files/leaf_004
+I1221 13:23:43.956356  926120 main.go:131] 4: /tmp/myfiles/leaf_004
 
 $ go run ./cmd/integrate  --storage_dir="${LOG_DIR}"  --public_key=key.pub --private_key=key --origin="${LOG_ORIGIN}"
 I1221 13:24:11.168864  926446 integrate.go:94] Loaded state with roothash 0c2e71ac054d92d58b0efd3013d0df235245331f0c0e828bab62a8fe62460c7f
@@ -307,13 +307,13 @@ Now, let's fill up the tile, with the maximum number of leaves it can hold: 256.
 $ for i in $(seq 5 255); do x=$(printf "%03d" $i); echo "leaf_data_$x" > $DATA_DIR/leaf_$x; done;
 
 $ go run ./cmd/sequence --storage_dir="${LOG_DIR}" --entries "${DATA_DIR}/*"  --public_key=key.pub --origin="${LOG_ORIGIN}"
-I1221 13:26:19.752225  927458 main.go:131] 0: /tmp/files/leaf_000 (dupe)
-I1221 13:26:19.752350  927458 main.go:131] 1: /tmp/files/leaf_001 (dupe)
-I1221 13:26:19.752398  927458 main.go:131] 2: /tmp/files/leaf_002 (dupe)
-I1221 13:26:19.752442  927458 main.go:131] 3: /tmp/files/leaf_003 (dupe)
-I1221 13:26:19.752499  927458 main.go:131] 4: /tmp/files/leaf_004 (dupe)
-I1221 13:26:19.752859  927458 main.go:131] 5: /tmp/files/leaf_005
-I1221 13:26:19.753301  927458 main.go:131] 6: /tmp/files/leaf_006
+I1221 13:26:19.752225  927458 main.go:131] 0: /tmp/myfiles/leaf_000 (dupe)
+I1221 13:26:19.752350  927458 main.go:131] 1: /tmp/myfiles/leaf_001 (dupe)
+I1221 13:26:19.752398  927458 main.go:131] 2: /tmp/myfiles/leaf_002 (dupe)
+I1221 13:26:19.752442  927458 main.go:131] 3: /tmp/myfiles/leaf_003 (dupe)
+I1221 13:26:19.752499  927458 main.go:131] 4: /tmp/myfiles/leaf_004 (dupe)
+I1221 13:26:19.752859  927458 main.go:131] 5: /tmp/myfiles/leaf_005
+I1221 13:26:19.753301  927458 main.go:131] 6: /tmp/myfiles/leaf_006
 ...
 
 $ go run ./cmd/integrate  --storage_dir="${LOG_DIR}"  --public_key=key.pub --private_key=key --origin="${LOG_ORIGIN}"
