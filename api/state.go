@@ -23,9 +23,6 @@ import (
 	"strings"
 )
 
-// CheckpointHeaderV0 is the first line of a marshaled log checkpoint.
-const CheckpointHeaderV0 = "Log Checkpoint v0"
-
 // Tile represents a subtree tile, containing inner nodes of a log tree.
 type Tile struct {
 	// NumLeaves is the number of entries at level 0 of this tile.
