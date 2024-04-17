@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	logURL        = flag.String("log_url", "", "Log storage root URL, e.g. https://log.server/and/path")
+	logURL        = flag.String("log_url", "", "Log storage root URL, e.g. https://log.server/and/path/")
 	logPubKeyFile = flag.String("log_public_key", "", "Location of log public key file. If unset, uses the contents of the SERVERLESS_LOG_PUBLIC_KEY environment variable")
 	origin        = flag.String("origin", "", "Expected first line of checkpoints from log")
 
