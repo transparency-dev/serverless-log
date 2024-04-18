@@ -45,6 +45,9 @@ type RandomLeafReader struct {
 
 // Run runs the log reader. This should be called in a goroutine.
 func (r *RandomLeafReader) Run(ctx context.Context) {
+	if r.cancel != nil {
+		panic("RandomLeafReader was ran multiple times")
+	}
 	ctx, r.cancel = context.WithCancel(ctx)
 	for {
 		select {
@@ -64,7 +67,9 @@ func (r *RandomLeafReader) Run(ctx context.Context) {
 // Kills this leaf reader at the next opportune moment.
 // This function may return before the reader is dead.
 func (r *RandomLeafReader) Kill() {
-	r.cancel()
+	if r.cancel != nil {
+		r.cancel()
+	}
 }
 
 // NewFullLogReader creates a FullLogReader.
@@ -92,6 +97,9 @@ type FullLogReader struct {
 
 // Run runs the log reader. This should be called in a goroutine.
 func (r *FullLogReader) Run(ctx context.Context) {
+	if r.cancel != nil {
+		panic("FullLogReader was ran multiple times")
+	}
 	ctx, r.cancel = context.WithCancel(ctx)
 	for {
 		if r.current >= r.tracker.LatestConsistent.Size {
@@ -122,5 +130,7 @@ func (r *FullLogReader) Run(ctx context.Context) {
 // Kills this leaf reader at the next opportune moment.
 // This function may return before the reader is dead.
 func (r *FullLogReader) Kill() {
-	r.cancel()
+	if r.cancel != nil {
+		r.cancel()
+	}
 }
