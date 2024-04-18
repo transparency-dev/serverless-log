@@ -115,12 +115,12 @@ func (h *Hammer) Run(ctx context.Context, tracker *client.LogStateTracker, f cli
 	// Kick off readers
 	errChan := make(chan error, 20)
 	for i := 0; i < *numReadersRandom; i++ {
-		h.randomReaders[i] = NewRandomLeafReader(ctx, tracker, f, h.throttle.readTokens, errChan)
-		go h.randomReaders[i].Run()
+		h.randomReaders[i] = NewRandomLeafReader(tracker, f, h.throttle.readTokens, errChan)
+		go h.randomReaders[i].Run(ctx)
 	}
 	for i := 0; i < *numReadersFull; i++ {
-		h.fullReaders[i] = NewFullLogReader(ctx, tracker, f, h.throttle.readTokens, errChan)
-		go h.fullReaders[i].Run()
+		h.fullReaders[i] = NewFullLogReader(tracker, f, h.throttle.readTokens, errChan)
+		go h.fullReaders[i].Run(ctx)
 	}
 
 	// Set up logging for any errors

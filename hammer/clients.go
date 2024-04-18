@@ -25,15 +25,12 @@ import (
 )
 
 // NewRandomLeafReader creates a RandomLeafReader.
-func NewRandomLeafReader(ctx context.Context, tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
-	ctx, cancel := context.WithCancel(ctx)
+func NewRandomLeafReader(tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
 	return &RandomLeafReader{
 		tracker:  tracker,
 		f:        f,
 		throttle: throttle,
 		errchan:  errchan,
-		ctx:      ctx,
-		cancel:   cancel,
 	}
 }
 
@@ -43,21 +40,21 @@ type RandomLeafReader struct {
 	f        client.Fetcher
 	throttle <-chan bool
 	errchan  chan<- error
-	ctx      context.Context
 	cancel   func()
 }
 
 // Run runs the log reader. This should be called in a goroutine.
-func (r *RandomLeafReader) Run() {
+func (r *RandomLeafReader) Run(ctx context.Context) {
+	ctx, r.cancel = context.WithCancel(ctx)
 	for {
 		select {
-		case <-r.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-r.throttle:
 		}
 		i := uint64(rand.Int63n(int64(r.tracker.LatestConsistent.Size)))
 		klog.V(2).Infof("RandomLeafReader getting %d", i)
-		_, err := client.GetLeaf(r.ctx, r.f, i)
+		_, err := client.GetLeaf(ctx, r.f, i)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get random leaf: %v", err)
 		}
@@ -71,15 +68,12 @@ func (r *RandomLeafReader) Kill() {
 }
 
 // NewFullLogReader creates a FullLogReader.
-func NewFullLogReader(ctx context.Context, tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *FullLogReader {
-	ctx, cancel := context.WithCancel(ctx)
+func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *FullLogReader {
 	return &FullLogReader{
 		tracker:  tracker,
 		f:        f,
 		throttle: throttle,
 		errchan:  errchan,
-		ctx:      ctx,
-		cancel:   cancel,
 
 		current: 0,
 	}
@@ -91,32 +85,32 @@ type FullLogReader struct {
 	f        client.Fetcher
 	throttle <-chan bool
 	errchan  chan<- error
-	ctx      context.Context
 	cancel   func()
 
 	current uint64
 }
 
 // Run runs the log reader. This should be called in a goroutine.
-func (r *FullLogReader) Run() {
+func (r *FullLogReader) Run(ctx context.Context) {
+	ctx, r.cancel = context.WithCancel(ctx)
 	for {
 		if r.current >= r.tracker.LatestConsistent.Size {
 			klog.V(2).Infof("FullLogReader has consumed whole log of size %d. Sleeping.", r.tracker.LatestConsistent.Size)
 			// Sleep a bit and then try again
 			select {
-			case <-r.ctx.Done(): //context cancelled
+			case <-ctx.Done(): //context cancelled
 				return
 			case <-time.After(2 * time.Second): //timeout
 			}
 			continue
 		}
 		select {
-		case <-r.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-r.throttle:
 		}
 		klog.V(2).Infof("FullLeafReader getting %d", r.current)
-		_, err := client.GetLeaf(r.ctx, r.f, r.current)
+		_, err := client.GetLeaf(ctx, r.f, r.current)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get next leaf: %v", err)
 			continue
