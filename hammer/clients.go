@@ -40,18 +40,35 @@ type RandomLeafReader struct {
 	f        client.Fetcher
 	throttle <-chan bool
 	errchan  chan<- error
+	cancel   func()
 }
 
 // Run runs the log reader. This should be called in a goroutine.
 func (r *RandomLeafReader) Run(ctx context.Context) {
+	if r.cancel != nil {
+		panic("RandomLeafReader was ran multiple times")
+	}
+	ctx, r.cancel = context.WithCancel(ctx)
 	for {
-		<-r.throttle
+		select {
+		case <-ctx.Done():
+			return
+		case <-r.throttle:
+		}
 		i := uint64(rand.Int63n(int64(r.tracker.LatestConsistent.Size)))
 		klog.V(2).Infof("RandomLeafReader getting %d", i)
 		_, err := client.GetLeaf(ctx, r.f, i)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get random leaf: %v", err)
 		}
+	}
+}
+
+// Kills this leaf reader at the next opportune moment.
+// This function may return before the reader is dead.
+func (r *RandomLeafReader) Kill() {
+	if r.cancel != nil {
+		r.cancel()
 	}
 }
 
@@ -73,12 +90,17 @@ type FullLogReader struct {
 	f        client.Fetcher
 	throttle <-chan bool
 	errchan  chan<- error
+	cancel   func()
 
 	current uint64
 }
 
 // Run runs the log reader. This should be called in a goroutine.
 func (r *FullLogReader) Run(ctx context.Context) {
+	if r.cancel != nil {
+		panic("FullLogReader was ran multiple times")
+	}
+	ctx, r.cancel = context.WithCancel(ctx)
 	for {
 		if r.current >= r.tracker.LatestConsistent.Size {
 			klog.V(2).Infof("FullLogReader has consumed whole log of size %d. Sleeping.", r.tracker.LatestConsistent.Size)
@@ -90,7 +112,11 @@ func (r *FullLogReader) Run(ctx context.Context) {
 			}
 			continue
 		}
-		<-r.throttle
+		select {
+		case <-ctx.Done():
+			return
+		case <-r.throttle:
+		}
 		klog.V(2).Infof("FullLeafReader getting %d", r.current)
 		_, err := client.GetLeaf(ctx, r.f, r.current)
 		if err != nil {
@@ -98,5 +124,13 @@ func (r *FullLogReader) Run(ctx context.Context) {
 			continue
 		}
 		r.current++
+	}
+}
+
+// Kills this leaf reader at the next opportune moment.
+// This function may return before the reader is dead.
+func (r *FullLogReader) Kill() {
+	if r.cancel != nil {
+		r.cancel()
 	}
 }
