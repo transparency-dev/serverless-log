@@ -30,22 +30,27 @@ import (
 )
 
 // NewRandomLeafReader creates a RandomLeafReader.
-func NewRandomLeafReader(tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
+func NewRandomLeafReader(tracker *client.LogStateTracker, f client.Fetcher, bundleSize int, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
+	if bundleSize <= 0 {
+		panic("bundleSize must be > 0")
+	}
 	return &RandomLeafReader{
-		tracker:  tracker,
-		f:        f,
-		throttle: throttle,
-		errchan:  errchan,
+		tracker:    tracker,
+		f:          f,
+		bundleSize: bundleSize,
+		throttle:   throttle,
+		errchan:    errchan,
 	}
 }
 
 // RandomLeafReader reads random leaves across the tree.
 type RandomLeafReader struct {
-	tracker  *client.LogStateTracker
-	f        client.Fetcher
-	throttle <-chan bool
-	errchan  chan<- error
-	cancel   func()
+	tracker    *client.LogStateTracker
+	f          client.Fetcher
+	bundleSize int
+	throttle   <-chan bool
+	errchan    chan<- error
+	cancel     func()
 }
 
 // Run runs the log reader. This should be called in a goroutine.
@@ -65,8 +70,10 @@ func (r *RandomLeafReader) Run(ctx context.Context) {
 			continue
 		}
 		i := uint64(rand.Int63n(int64(size)))
-		klog.V(2).Infof("RandomLeafReader getting %d", i)
-		_, err := client.GetLeaf(ctx, r.f, i)
+		// TODO: make a smarter implementations of GetLeaf which knows about bundles.
+		b := i / uint64(r.bundleSize)
+		klog.V(2).Infof("RandomLeafReader getting %d (in bundle %d)", i, b)
+		_, err := client.GetLeaf(ctx, r.f, b)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get random leaf: %v", err)
 		}
@@ -82,12 +89,16 @@ func (r *RandomLeafReader) Kill() {
 }
 
 // NewFullLogReader creates a FullLogReader.
-func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *FullLogReader {
+func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, bundleSize int, throttle <-chan bool, errchan chan<- error) *FullLogReader {
+	if bundleSize <= 0 {
+		panic("bundleSize must be > 0")
+	}
 	return &FullLogReader{
-		tracker:  tracker,
-		f:        f,
-		throttle: throttle,
-		errchan:  errchan,
+		tracker:    tracker,
+		f:          f,
+		bundleSize: bundleSize,
+		throttle:   throttle,
+		errchan:    errchan,
 
 		current: 0,
 	}
@@ -95,11 +106,12 @@ func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, throttl
 
 // FullLogReader reads the whole log from the start until the end.
 type FullLogReader struct {
-	tracker  *client.LogStateTracker
-	f        client.Fetcher
-	throttle <-chan bool
-	errchan  chan<- error
-	cancel   func()
+	tracker    *client.LogStateTracker
+	f          client.Fetcher
+	bundleSize int
+	throttle   <-chan bool
+	errchan    chan<- error
+	cancel     func()
 
 	current uint64
 }
@@ -126,8 +138,10 @@ func (r *FullLogReader) Run(ctx context.Context) {
 			return
 		case <-r.throttle:
 		}
-		klog.V(2).Infof("FullLogReader getting %d", r.current)
-		_, err := client.GetLeaf(ctx, r.f, r.current)
+		// TODO: make a smarter implementations of GetLeaf which knows about bundles.
+		b := r.current / uint64(r.bundleSize)
+		klog.V(2).Infof("FullLogReader getting %d (in bundle %d)", r.current, b)
+		_, err := client.GetLeaf(ctx, r.f, b)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get next leaf: %v", err)
 			continue

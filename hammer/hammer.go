@@ -46,6 +46,8 @@ var (
 	maxWriteOpsPerSecond = flag.Int("max_write_ops", 0, "The maximum number of write operations per second")
 	numWriters           = flag.Int("num_writers", 0, "The number of independent write tasks to run")
 
+	leafBundleSize = flag.Int("leaf_bundle_size", 1, "The log-configured number of leaves in each leaf bundle")
+
 	showUI = flag.Bool("show_ui", true, "Set to false to disable the text-based UI")
 )
 
@@ -119,10 +121,10 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	fullReaders := make([]*FullLogReader, *numReadersFull)
 	writers := make([]*LogWriter, *numWriters)
 	for i := 0; i < *numReadersRandom; i++ {
-		randomReaders[i] = NewRandomLeafReader(tracker, f, readThrottle.tokenChan, errChan)
+		randomReaders[i] = NewRandomLeafReader(tracker, f, *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
 	for i := 0; i < *numReadersFull; i++ {
-		fullReaders[i] = NewFullLogReader(tracker, f, readThrottle.tokenChan, errChan)
+		fullReaders[i] = NewFullLogReader(tracker, f, *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
 	for i := 0; i < *numWriters; i++ {
 		writers[i] = NewLogWriter(addURL, gen, writeThrottle.tokenChan, errChan)
