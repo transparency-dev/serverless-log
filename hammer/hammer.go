@@ -43,6 +43,9 @@ var (
 	numReadersRandom    = flag.Int("num_readers_random", 4, "The number of readers looking for random leaves")
 	numReadersFull      = flag.Int("num_readers_full", 4, "The number of readers downloading the whole log")
 
+	maxWriteOpsPerSecond = flag.Int("max_write_ops", 0, "The maximum number of write operations per second")
+	numWriters           = flag.Int("num_writers", 0, "The number of independent write tasks to run")
+
 	showUI = flag.Bool("show_ui", true, "Set to false to disable the text-based UI")
 )
 
@@ -85,10 +88,12 @@ func main() {
 		klog.Exitf("Failed to get initial state of the log: %v", err)
 	}
 
-	hammer := NewHammer()
-	go hammer.Run(ctx, &tracker, f)
-
-	// TODO(mhutchinson): Set up writing
+	addURL, err := rootURL.Parse("add")
+	if err != nil {
+		klog.Exitf("Failed to create add URL: %v", err)
+	}
+	hammer := NewHammer(&tracker, f, addURL)
+	hammer.Run(ctx)
 
 	if *showUI {
 		hostUI(ctx, hammer)
@@ -97,30 +102,62 @@ func main() {
 	}
 }
 
-func NewHammer() *Hammer {
+func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.URL) *Hammer {
+	// TODO(mhutchinson): Make this leaf generator more interesting
+	g := 0
+	gen := func() []byte {
+		r := g
+		g++
+		return []byte(fmt.Sprintf("%d", r))
+	}
+
+	readThrottle := NewThrottle(*maxReadOpsPerSecond)
+	writeThrottle := NewThrottle(*maxWriteOpsPerSecond)
+	errChan := make(chan error, 20)
+
+	randomReaders := make([]*RandomLeafReader, *numReadersRandom)
+	fullReaders := make([]*FullLogReader, *numReadersFull)
+	writers := make([]*LogWriter, *numWriters)
+	for i := 0; i < *numReadersRandom; i++ {
+		randomReaders[i] = NewRandomLeafReader(tracker, f, readThrottle.tokenChan, errChan)
+	}
+	for i := 0; i < *numReadersFull; i++ {
+		fullReaders[i] = NewFullLogReader(tracker, f, readThrottle.tokenChan, errChan)
+	}
+	for i := 0; i < *numWriters; i++ {
+		writers[i] = NewLogWriter(addURL, gen, writeThrottle.tokenChan, errChan)
+	}
 	return &Hammer{
-		randomReaders: make([]*RandomLeafReader, *numReadersRandom),
-		fullReaders:   make([]*FullLogReader, *numReadersFull),
-		throttle:      NewThrottle(),
+		randomReaders: randomReaders,
+		fullReaders:   fullReaders,
+		writers:       writers,
+		readThrottle:  readThrottle,
+		writeThrottle: writeThrottle,
+		tracker:       tracker,
+		errChan:       errChan,
 	}
 }
 
 type Hammer struct {
 	randomReaders []*RandomLeafReader
 	fullReaders   []*FullLogReader
-	throttle      *Throttle
+	writers       []*LogWriter
+	readThrottle  *Throttle
+	writeThrottle *Throttle
+	tracker       *client.LogStateTracker
+	errChan       chan error
 }
 
-func (h *Hammer) Run(ctx context.Context, tracker *client.LogStateTracker, f client.Fetcher) {
-	// Kick off readers
-	errChan := make(chan error, 20)
-	for i := 0; i < *numReadersRandom; i++ {
-		h.randomReaders[i] = NewRandomLeafReader(tracker, f, h.throttle.readTokens, errChan)
-		go h.randomReaders[i].Run(ctx)
+func (h *Hammer) Run(ctx context.Context) {
+	// Kick off readers & writers
+	for _, r := range h.randomReaders {
+		go r.Run(ctx)
 	}
-	for i := 0; i < *numReadersFull; i++ {
-		h.fullReaders[i] = NewFullLogReader(tracker, f, h.throttle.readTokens, errChan)
-		go h.fullReaders[i].Run(ctx)
+	for _, r := range h.fullReaders {
+		go r.Run(ctx)
+	}
+	for _, w := range h.writers {
+		go w.Run(ctx)
 	}
 
 	// Set up logging for any errors
@@ -129,41 +166,62 @@ func (h *Hammer) Run(ctx context.Context, tracker *client.LogStateTracker, f cli
 			select {
 			case <-ctx.Done(): //context cancelled
 				return
-			case err := <-errChan:
+			case err := <-h.errChan:
 				klog.Warning(err)
 			}
 		}
 	}()
 
-	// Start the throttle
-	go h.throttle.Run(ctx)
+	// Start the throttles
+	go h.readThrottle.Run(ctx)
+	go h.writeThrottle.Run(ctx)
+
+	go func() {
+		tick := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				size := h.tracker.LatestConsistent.Size
+				_, _, _, err := h.tracker.Update(ctx)
+				if err != nil {
+					klog.Warning(err)
+				}
+				newSize := h.tracker.LatestConsistent.Size
+				if newSize > size {
+					klog.V(1).Infof("Updated checkpoint from %d to %d", size, newSize)
+				}
+			}
+		}
+	}()
 }
 
-func NewThrottle() *Throttle {
+func NewThrottle(opsPerSecond int) *Throttle {
 	return &Throttle{
-		readOpsPerSecond: *maxReadOpsPerSecond,
-		readTokens:       make(chan bool, *maxReadOpsPerSecond),
+		opsPerSecond: opsPerSecond,
+		tokenChan:    make(chan bool, opsPerSecond),
 	}
 }
 
 type Throttle struct {
-	readOpsPerSecond int
-	readTokens       chan bool
+	opsPerSecond int
+	tokenChan    chan bool
 
 	oversupply int
 }
 
 func (t *Throttle) Increase() {
-	tokenCount := t.readOpsPerSecond
+	tokenCount := t.opsPerSecond
 	delta := float64(tokenCount) * 0.1
 	if delta < 1 {
 		delta = 1
 	}
-	t.readOpsPerSecond = tokenCount + int(delta)
+	t.opsPerSecond = tokenCount + int(delta)
 }
 
 func (t *Throttle) Decrease() {
-	tokenCount := t.readOpsPerSecond
+	tokenCount := t.opsPerSecond
 	if tokenCount <= 1 {
 		return
 	}
@@ -171,7 +229,7 @@ func (t *Throttle) Decrease() {
 	if delta < 1 {
 		delta = 1
 	}
-	t.readOpsPerSecond = tokenCount - int(delta)
+	t.opsPerSecond = tokenCount - int(delta)
 }
 
 func (t *Throttle) Run(ctx context.Context) {
@@ -181,11 +239,11 @@ func (t *Throttle) Run(ctx context.Context) {
 		case <-ctx.Done(): //context cancelled
 			return
 		case <-ticker.C:
-			tokenCount := t.readOpsPerSecond
+			tokenCount := t.opsPerSecond
 			sessionOversupply := 0
 			for i := 0; i < tokenCount; i++ {
 				select {
-				case t.readTokens <- true:
+				case t.tokenChan <- true:
 				default:
 					sessionOversupply += 1
 				}
@@ -196,7 +254,7 @@ func (t *Throttle) Run(ctx context.Context) {
 }
 
 func (t *Throttle) String() string {
-	return fmt.Sprintf("Current max: %d reads/s. Oversupply in last second: %d", t.readOpsPerSecond, t.oversupply)
+	return fmt.Sprintf("Current max: %d/s. Oversupply in last second: %d", t.opsPerSecond, t.oversupply)
 }
 
 func hostUI(ctx context.Context, hammer *Hammer) {
@@ -225,7 +283,8 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				statusView.SetText(hammer.throttle.String())
+				text := fmt.Sprintf("Read: %s\nWrite: %s", hammer.readThrottle.String(), hammer.writeThrottle.String())
+				statusView.SetText(text)
 				app.Draw()
 			}
 		}
@@ -234,10 +293,10 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 		switch event.Rune() {
 		case '+':
 			klog.Info("Increasing the read operations per second")
-			hammer.throttle.Increase()
+			hammer.readThrottle.Increase()
 		case '-':
 			klog.Info("Decreasing the read operations per second")
-			hammer.throttle.Decrease()
+			hammer.readThrottle.Decrease()
 		}
 		return event
 	})

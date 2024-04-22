@@ -15,9 +15,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
+	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/transparency-dev/serverless-log/client"
@@ -55,7 +60,11 @@ func (r *RandomLeafReader) Run(ctx context.Context) {
 			return
 		case <-r.throttle:
 		}
-		i := uint64(rand.Int63n(int64(r.tracker.LatestConsistent.Size)))
+		size := r.tracker.LatestConsistent.Size
+		if size == 0 {
+			continue
+		}
+		i := uint64(rand.Int63n(int64(size)))
 		klog.V(2).Infof("RandomLeafReader getting %d", i)
 		_, err := client.GetLeaf(ctx, r.f, i)
 		if err != nil {
@@ -117,7 +126,7 @@ func (r *FullLogReader) Run(ctx context.Context) {
 			return
 		case <-r.throttle:
 		}
-		klog.V(2).Infof("FullLeafReader getting %d", r.current)
+		klog.V(2).Infof("FullLogReader getting %d", r.current)
 		_, err := client.GetLeaf(ctx, r.f, r.current)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get next leaf: %v", err)
@@ -130,6 +139,77 @@ func (r *FullLogReader) Run(ctx context.Context) {
 // Kills this leaf reader at the next opportune moment.
 // This function may return before the reader is dead.
 func (r *FullLogReader) Kill() {
+	if r.cancel != nil {
+		r.cancel()
+	}
+}
+
+// NewLogWriter creates a LogWriter.
+// u is the URL of the write endpoint for the log.
+// gen is a function that generates new leaves to add.
+func NewLogWriter(u *url.URL, gen func() []byte, throttle <-chan bool, errchan chan<- error) *LogWriter {
+	return &LogWriter{
+		u:        u,
+		gen:      gen,
+		throttle: throttle,
+		errchan:  errchan,
+	}
+}
+
+// LogWriter reads the whole log from the start until the end.
+type LogWriter struct {
+	u        *url.URL
+	gen      func() []byte
+	throttle <-chan bool
+	errchan  chan<- error
+	cancel   func()
+}
+
+// Run runs the log reader. This should be called in a goroutine.
+func (r *LogWriter) Run(ctx context.Context) {
+	if r.cancel != nil {
+		panic("LogWriter was ran multiple times")
+	}
+	ctx, r.cancel = context.WithCancel(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-r.throttle:
+		}
+		newLeaf := r.gen()
+		resp, err := http.Post(r.u.String(), "application/octet-stream", bytes.NewReader(newLeaf))
+		if err != nil {
+			r.errchan <- fmt.Errorf("Failed to write leaf: %v", err)
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			r.errchan <- fmt.Errorf("Failed to read body: %v", err)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			r.errchan <- fmt.Errorf("Write leaf was not OK. Status code: %d. Body: %q", resp.StatusCode, body)
+			continue
+		}
+		if resp.Request.Method != http.MethodPost {
+			r.errchan <- fmt.Errorf("Write leaf was redirected to %s", resp.Request.URL)
+			continue
+		}
+		parts := bytes.Split(body, []byte("\n"))
+		index, err := strconv.Atoi(string(parts[0]))
+		if err != nil {
+			r.errchan <- fmt.Errorf("Write leaf failed to parse response: %v", body)
+			continue
+		}
+
+		klog.V(2).Infof("Wrote leaf at index %d", index)
+	}
+}
+
+// Kills this leaf reader at the next opportune moment.
+// This function may return before the reader is dead.
+func (r *LogWriter) Kill() {
 	if r.cancel != nil {
 		r.cancel()
 	}
