@@ -17,35 +17,45 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/transparency-dev/serverless-log/api/layout"
 	"github.com/transparency-dev/serverless-log/client"
 	"k8s.io/klog/v2"
 )
 
 // NewRandomLeafReader creates a RandomLeafReader.
-func NewRandomLeafReader(tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
+func NewRandomLeafReader(tracker *client.LogStateTracker, f client.Fetcher, bundleSize int, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
+	if bundleSize <= 0 {
+		panic("bundleSize must be > 0")
+	}
 	return &RandomLeafReader{
-		tracker:  tracker,
-		f:        f,
-		throttle: throttle,
-		errchan:  errchan,
+		tracker:    tracker,
+		f:          f,
+		bundleSize: bundleSize,
+		throttle:   throttle,
+		errchan:    errchan,
 	}
 }
 
 // RandomLeafReader reads random leaves across the tree.
 type RandomLeafReader struct {
-	tracker  *client.LogStateTracker
-	f        client.Fetcher
-	throttle <-chan bool
-	errchan  chan<- error
-	cancel   func()
+	tracker    *client.LogStateTracker
+	f          client.Fetcher
+	bundleSize int
+	throttle   <-chan bool
+	errchan    chan<- error
+	cancel     func()
 }
 
 // Run runs the log reader. This should be called in a goroutine.
@@ -66,7 +76,7 @@ func (r *RandomLeafReader) Run(ctx context.Context) {
 		}
 		i := uint64(rand.Int63n(int64(size)))
 		klog.V(2).Infof("RandomLeafReader getting %d", i)
-		_, err := client.GetLeaf(ctx, r.f, i)
+		_, err := getLeaf(ctx, r.f, i, r.tracker.LatestConsistent.Size, r.bundleSize)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get random leaf: %v", err)
 		}
@@ -82,12 +92,16 @@ func (r *RandomLeafReader) Kill() {
 }
 
 // NewFullLogReader creates a FullLogReader.
-func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, throttle <-chan bool, errchan chan<- error) *FullLogReader {
+func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, bundleSize int, throttle <-chan bool, errchan chan<- error) *FullLogReader {
+	if bundleSize <= 0 {
+		panic("bundleSize must be > 0")
+	}
 	return &FullLogReader{
-		tracker:  tracker,
-		f:        f,
-		throttle: throttle,
-		errchan:  errchan,
+		tracker:    tracker,
+		f:          f,
+		bundleSize: bundleSize,
+		throttle:   throttle,
+		errchan:    errchan,
 
 		current: 0,
 	}
@@ -95,11 +109,12 @@ func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, throttl
 
 // FullLogReader reads the whole log from the start until the end.
 type FullLogReader struct {
-	tracker  *client.LogStateTracker
-	f        client.Fetcher
-	throttle <-chan bool
-	errchan  chan<- error
-	cancel   func()
+	tracker    *client.LogStateTracker
+	f          client.Fetcher
+	bundleSize int
+	throttle   <-chan bool
+	errchan    chan<- error
+	cancel     func()
 
 	current uint64
 }
@@ -127,7 +142,7 @@ func (r *FullLogReader) Run(ctx context.Context) {
 		case <-r.throttle:
 		}
 		klog.V(2).Infof("FullLogReader getting %d", r.current)
-		_, err := client.GetLeaf(ctx, r.f, r.current)
+		_, err := getLeaf(ctx, r.f, r.current, r.tracker.LatestConsistent.Size, r.bundleSize)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get next leaf: %v", err)
 			continue
@@ -142,6 +157,36 @@ func (r *FullLogReader) Kill() {
 	if r.cancel != nil {
 		r.cancel()
 	}
+}
+
+// getLeaf fetches the raw contents committed to at a given leaf index.
+func getLeaf(ctx context.Context, f client.Fetcher, i uint64, logSize uint64, bundleSize int) ([]byte, error) {
+	if i >= logSize {
+		return nil, fmt.Errorf("requested leaf %d >= log size %d", i, logSize)
+	}
+	bi := i / uint64(bundleSize)
+	br := uint64(0)
+	// Check for partial leaf bundle
+	if bi == logSize/uint64(bundleSize) {
+		br = logSize % uint64(bundleSize)
+	}
+	p := filepath.Join(layout.SeqPath("", bi))
+	if br > 0 {
+		p += fmt.Sprintf(".%d", br)
+	}
+	bRaw, err := f(ctx, p)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("leaf index %d not found: %w", i, err)
+		}
+		return nil, fmt.Errorf("failed to fetch leaf index %d: %w", i, err)
+	}
+	bs := bytes.Split(bRaw, []byte("\n"))
+	if l := len(bs); uint64(l) <= br {
+		return nil, fmt.Errorf("huh, short leaf bundle with %d entries, want %d", l, br)
+	}
+
+	return base64.StdEncoding.DecodeString(string(bs[br]))
 }
 
 // NewLogWriter creates a LogWriter.
