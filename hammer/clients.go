@@ -84,7 +84,7 @@ func (r *LeafReader) Run(ctx context.Context) {
 		klog.V(2).Infof("LeafReader getting %d", i)
 		_, err := r.getLeaf(ctx, i, size)
 		if err != nil {
-			r.errchan <- fmt.Errorf("Failed to get leaf: %v", err)
+			r.errchan <- fmt.Errorf("failed to get leaf: %v", err)
 		}
 	}
 }
@@ -184,26 +184,26 @@ func (r *LogWriter) Run(ctx context.Context) {
 		newLeaf := r.gen()
 		resp, err := http.Post(r.u.String(), "application/octet-stream", bytes.NewReader(newLeaf))
 		if err != nil {
-			r.errchan <- fmt.Errorf("Failed to write leaf: %v", err)
+			r.errchan <- fmt.Errorf("failed to write leaf: %v", err)
 			continue
 		}
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			r.errchan <- fmt.Errorf("Failed to read body: %v", err)
+			r.errchan <- fmt.Errorf("failed to read body: %v", err)
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			r.errchan <- fmt.Errorf("Write leaf was not OK. Status code: %d. Body: %q", resp.StatusCode, body)
+			r.errchan <- fmt.Errorf("write leaf was not OK. Status code: %d. Body: %q", resp.StatusCode, body)
 			continue
 		}
 		if resp.Request.Method != http.MethodPost {
-			r.errchan <- fmt.Errorf("Write leaf was redirected to %s", resp.Request.URL)
+			r.errchan <- fmt.Errorf("write leaf was redirected to %s", resp.Request.URL)
 			continue
 		}
 		parts := bytes.Split(body, []byte("\n"))
 		index, err := strconv.Atoi(string(parts[0]))
 		if err != nil {
-			r.errchan <- fmt.Errorf("Write leaf failed to parse response: %v", body)
+			r.errchan <- fmt.Errorf("write leaf failed to parse response: %v", body)
 			continue
 		}
 
