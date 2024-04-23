@@ -34,6 +34,8 @@ import (
 )
 
 // NewLeafReader creates a LeafReader.
+// The next function provides a strategy for which leaves will be read.
+// Custom implementations can be passed, or use RandomNextLeaf or MonotonicallyIncreasingNextLeaf.
 func NewLeafReader(tracker *client.LogStateTracker, f client.Fetcher, next func(uint64) uint64, bundleSize int, throttle <-chan bool, errchan chan<- error) *LeafReader {
 	if bundleSize <= 0 {
 		panic("bundleSize must be > 0")
@@ -48,7 +50,7 @@ func NewLeafReader(tracker *client.LogStateTracker, f client.Fetcher, next func(
 	}
 }
 
-// LeafReader reads random leaves across the tree.
+// LeafReader reads leaves from the tree.
 type LeafReader struct {
 	tracker    *client.LogStateTracker
 	f          client.Fetcher
@@ -76,13 +78,13 @@ func (r *LeafReader) Run(ctx context.Context) {
 			continue
 		}
 		i := r.next(size)
-		if i == size {
+		if i >= size {
 			continue
 		}
 		klog.V(2).Infof("LeafReader getting %d", i)
 		_, err := r.getLeaf(ctx, i, size)
 		if err != nil {
-			r.errchan <- fmt.Errorf("Failed to get random leaf: %v", err)
+			r.errchan <- fmt.Errorf("Failed to get leaf: %v", err)
 		}
 	}
 }
