@@ -117,14 +117,14 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	writeThrottle := NewThrottle(*maxWriteOpsPerSecond)
 	errChan := make(chan error, 20)
 
-	randomReaders := make([]*RandomLeafReader, *numReadersRandom)
-	fullReaders := make([]*FullLogReader, *numReadersFull)
+	randomReaders := make([]*LeafReader, *numReadersRandom)
+	fullReaders := make([]*LeafReader, *numReadersFull)
 	writers := make([]*LogWriter, *numWriters)
 	for i := 0; i < *numReadersRandom; i++ {
-		randomReaders[i] = NewRandomLeafReader(tracker, f, *leafBundleSize, readThrottle.tokenChan, errChan)
+		randomReaders[i] = NewLeafReader(tracker, f, RandomNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
 	for i := 0; i < *numReadersFull; i++ {
-		fullReaders[i] = NewFullLogReader(tracker, f, *leafBundleSize, readThrottle.tokenChan, errChan)
+		fullReaders[i] = NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
 	for i := 0; i < *numWriters; i++ {
 		writers[i] = NewLogWriter(addURL, gen, writeThrottle.tokenChan, errChan)
@@ -141,8 +141,8 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 }
 
 type Hammer struct {
-	randomReaders []*RandomLeafReader
-	fullReaders   []*FullLogReader
+	randomReaders []*LeafReader
+	fullReaders   []*LeafReader
 	writers       []*LogWriter
 	readThrottle  *Throttle
 	writeThrottle *Throttle

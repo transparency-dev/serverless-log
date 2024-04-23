@@ -27,31 +27,32 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/transparency-dev/serverless-log/api/layout"
 	"github.com/transparency-dev/serverless-log/client"
 	"k8s.io/klog/v2"
 )
 
-// NewRandomLeafReader creates a RandomLeafReader.
-func NewRandomLeafReader(tracker *client.LogStateTracker, f client.Fetcher, bundleSize int, throttle <-chan bool, errchan chan<- error) *RandomLeafReader {
+// NewLeafReader creates a LeafReader.
+func NewLeafReader(tracker *client.LogStateTracker, f client.Fetcher, next func(uint64) uint64, bundleSize int, throttle <-chan bool, errchan chan<- error) *LeafReader {
 	if bundleSize <= 0 {
 		panic("bundleSize must be > 0")
 	}
-	return &RandomLeafReader{
+	return &LeafReader{
 		tracker:    tracker,
 		f:          f,
+		next:       next,
 		bundleSize: bundleSize,
 		throttle:   throttle,
 		errchan:    errchan,
 	}
 }
 
-// RandomLeafReader reads random leaves across the tree.
-type RandomLeafReader struct {
+// LeafReader reads random leaves across the tree.
+type LeafReader struct {
 	tracker    *client.LogStateTracker
 	f          client.Fetcher
+	next       func(uint64) uint64
 	bundleSize int
 	throttle   <-chan bool
 	errchan    chan<- error
@@ -59,9 +60,9 @@ type RandomLeafReader struct {
 }
 
 // Run runs the log reader. This should be called in a goroutine.
-func (r *RandomLeafReader) Run(ctx context.Context) {
+func (r *LeafReader) Run(ctx context.Context) {
 	if r.cancel != nil {
-		panic("RandomLeafReader was ran multiple times")
+		panic("LeafReader was ran multiple times")
 	}
 	ctx, r.cancel = context.WithCancel(ctx)
 	for {
@@ -74,107 +75,34 @@ func (r *RandomLeafReader) Run(ctx context.Context) {
 		if size == 0 {
 			continue
 		}
-		i := uint64(rand.Int63n(int64(size)))
-		klog.V(2).Infof("RandomLeafReader getting %d", i)
-		_, err := getLeaf(ctx, r.f, i, r.tracker.LatestConsistent.Size, r.bundleSize)
+		i := r.next(size)
+		if i == size {
+			continue
+		}
+		klog.V(2).Infof("LeafReader getting %d", i)
+		_, err := r.getLeaf(ctx, i, size)
 		if err != nil {
 			r.errchan <- fmt.Errorf("Failed to get random leaf: %v", err)
 		}
 	}
 }
 
-// Kills this leaf reader at the next opportune moment.
-// This function may return before the reader is dead.
-func (r *RandomLeafReader) Kill() {
-	if r.cancel != nil {
-		r.cancel()
-	}
-}
-
-// NewFullLogReader creates a FullLogReader.
-func NewFullLogReader(tracker *client.LogStateTracker, f client.Fetcher, bundleSize int, throttle <-chan bool, errchan chan<- error) *FullLogReader {
-	if bundleSize <= 0 {
-		panic("bundleSize must be > 0")
-	}
-	return &FullLogReader{
-		tracker:    tracker,
-		f:          f,
-		bundleSize: bundleSize,
-		throttle:   throttle,
-		errchan:    errchan,
-
-		current: 0,
-	}
-}
-
-// FullLogReader reads the whole log from the start until the end.
-type FullLogReader struct {
-	tracker    *client.LogStateTracker
-	f          client.Fetcher
-	bundleSize int
-	throttle   <-chan bool
-	errchan    chan<- error
-	cancel     func()
-
-	current uint64
-}
-
-// Run runs the log reader. This should be called in a goroutine.
-func (r *FullLogReader) Run(ctx context.Context) {
-	if r.cancel != nil {
-		panic("FullLogReader was ran multiple times")
-	}
-	ctx, r.cancel = context.WithCancel(ctx)
-	for {
-		if r.current >= r.tracker.LatestConsistent.Size {
-			klog.V(2).Infof("FullLogReader has consumed whole log of size %d. Sleeping.", r.tracker.LatestConsistent.Size)
-			// Sleep a bit and then try again
-			select {
-			case <-ctx.Done(): //context cancelled
-				return
-			case <-time.After(2 * time.Second): //timeout
-			}
-			continue
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-r.throttle:
-		}
-		klog.V(2).Infof("FullLogReader getting %d", r.current)
-		_, err := getLeaf(ctx, r.f, r.current, r.tracker.LatestConsistent.Size, r.bundleSize)
-		if err != nil {
-			r.errchan <- fmt.Errorf("Failed to get next leaf: %v", err)
-			continue
-		}
-		r.current++
-	}
-}
-
-// Kills this leaf reader at the next opportune moment.
-// This function may return before the reader is dead.
-func (r *FullLogReader) Kill() {
-	if r.cancel != nil {
-		r.cancel()
-	}
-}
-
 // getLeaf fetches the raw contents committed to at a given leaf index.
-func getLeaf(ctx context.Context, f client.Fetcher, i uint64, logSize uint64, bundleSize int) ([]byte, error) {
+func (r *LeafReader) getLeaf(ctx context.Context, i uint64, logSize uint64) ([]byte, error) {
 	if i >= logSize {
 		return nil, fmt.Errorf("requested leaf %d >= log size %d", i, logSize)
 	}
-	bi := i / uint64(bundleSize)
+	bi := i / uint64(r.bundleSize)
 	br := uint64(0)
 	// Check for partial leaf bundle
-	if bi == logSize/uint64(bundleSize) {
-		br = logSize % uint64(bundleSize)
+	if bi == logSize/uint64(r.bundleSize) {
+		br = logSize % uint64(r.bundleSize)
 	}
 	p := filepath.Join(layout.SeqPath("", bi))
 	if br > 0 {
 		p += fmt.Sprintf(".%d", br)
 	}
-	bRaw, err := f(ctx, p)
+	bRaw, err := r.f(ctx, p)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("leaf index %d not found: %w", i, err)
@@ -187,6 +115,35 @@ func getLeaf(ctx context.Context, f client.Fetcher, i uint64, logSize uint64, bu
 	}
 
 	return base64.StdEncoding.DecodeString(string(bs[br]))
+}
+
+// Kills this leaf reader at the next opportune moment.
+// This function may return before the reader is dead.
+func (r *LeafReader) Kill() {
+	if r.cancel != nil {
+		r.cancel()
+	}
+}
+
+// RandomNextLeaf returns a function that fetches a random leaf available in the tree.
+func RandomNextLeaf() func(uint64) uint64 {
+	return func(size uint64) uint64 {
+		return uint64(rand.Int63n(int64(size)))
+	}
+}
+
+// MonotonicallyIncreasingNextLeaf returns a function that always wants the next available
+// leaf after the one it previously fetched. It starts at leaf 0.
+func MonotonicallyIncreasingNextLeaf() func(uint64) uint64 {
+	var i uint64
+	return func(size uint64) uint64 {
+		if i < size {
+			r := i
+			i++
+			return r
+		}
+		return size
+	}
 }
 
 // NewLogWriter creates a LogWriter.
