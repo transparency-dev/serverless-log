@@ -278,6 +278,10 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 	}
 	klog.SetOutput(logView)
 
+	helpView := tview.NewTextView()
+	helpView.SetText("+/- to increase/decrease read load\n>/< to increase/decrease write load")
+	grid.AddItem(helpView, 2, 0, 1, 1, 0, 0, false)
+
 	app := tview.NewApplication()
 	ticker := time.NewTicker(1 * time.Second)
 	go func() {
@@ -300,6 +304,12 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 		case '-':
 			klog.Info("Decreasing the read operations per second")
 			hammer.readThrottle.Decrease()
+		case '>':
+			klog.Info("Increasing the write operations per second")
+			hammer.writeThrottle.Increase()
+		case '<':
+			klog.Info("Decreasing the write operations per second")
+			hammer.writeThrottle.Decrease()
 		}
 		return event
 	})
