@@ -236,7 +236,6 @@ func (t *Throttle) Decrease() {
 
 func (t *Throttle) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
-Loop:
 	for {
 		select {
 		case <-ctx.Done(): //context cancelled
@@ -244,6 +243,7 @@ Loop:
 		case <-ticker.C:
 			tokenCount := t.opsPerSecond
 			timeout := time.After(1 * time.Second)
+		Loop:
 			for i := 0; i < tokenCount; i++ {
 				select {
 				case t.tokenChan <- true:
