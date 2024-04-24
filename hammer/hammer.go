@@ -236,21 +236,22 @@ func (t *Throttle) Decrease() {
 
 func (t *Throttle) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
+Loop:
 	for {
 		select {
 		case <-ctx.Done(): //context cancelled
 			return
 		case <-ticker.C:
 			tokenCount := t.opsPerSecond
-			sessionOversupply := 0
+			timeout := time.After(1 * time.Second)
 			for i := 0; i < tokenCount; i++ {
 				select {
 				case t.tokenChan <- true:
-				default:
-					sessionOversupply += 1
+				case <-timeout:
+					t.oversupply = tokenCount - i
+					break Loop
 				}
 			}
-			t.oversupply = sessionOversupply
 		}
 	}
 }
