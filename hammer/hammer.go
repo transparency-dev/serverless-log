@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -105,14 +106,6 @@ func main() {
 }
 
 func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.URL) *Hammer {
-	// TODO(mhutchinson): Make this leaf generator more interesting
-	g := 0
-	gen := func() []byte {
-		r := g
-		g++
-		return []byte(fmt.Sprintf("%d", r))
-	}
-
 	readThrottle := NewThrottle(*maxReadOpsPerSecond)
 	writeThrottle := NewThrottle(*maxWriteOpsPerSecond)
 	errChan := make(chan error, 20)
@@ -126,6 +119,7 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	for i := 0; i < *numReadersFull; i++ {
 		fullReaders[i] = NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
+	gen := newLeafGenerator()
 	for i := 0; i < *numWriters; i++ {
 		writers[i] = NewLogWriter(addURL, gen, writeThrottle.tokenChan, errChan)
 	}
@@ -197,6 +191,25 @@ func (h *Hammer) Run(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+func newLeafGenerator() func() []byte {
+	const dupChance = 0.1
+	var g int64
+	return func() []byte {
+		var r int64
+		if rand.Float64() <= dupChance {
+			// This one will actually be unique, but the next iteration will
+			// duplicate it. In future, this duplication could be randomly
+			// selected to include really old leaves too, to test long-term
+			// deduplication in the log (if it supports  that).
+			r = g
+		} else {
+			r = g
+			g++
+		}
+		return []byte(fmt.Sprintf("%d", r))
+	}
 }
 
 func NewThrottle(opsPerSecond int) *Throttle {
