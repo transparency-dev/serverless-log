@@ -265,14 +265,15 @@ func (t *Throttle) Run(ctx context.Context) {
 			tokenCount := t.opsPerSecond
 			timeout := time.After(1 * time.Second)
 		Loop:
-			for i := 0; i < tokenCount; i++ {
+			for i := 0; i < t.opsPerSecond; i++ {
 				select {
 				case t.tokenChan <- true:
+					tokenCount--
 				case <-timeout:
-					t.oversupply = tokenCount - i
 					break Loop
 				}
 			}
+			t.oversupply = tokenCount
 		}
 	}
 }
@@ -415,6 +416,8 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 			klog.Errorf("resp.Body.Close(): %v", err)
 		}
 	}()
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	return io.ReadAll(resp.Body)
 }

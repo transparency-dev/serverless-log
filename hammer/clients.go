@@ -191,7 +191,7 @@ func (w *LogWriter) Run(ctx context.Context) {
 			continue
 		}
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			w.errchan <- fmt.Errorf("failed to read body: %v", err)
 			continue
