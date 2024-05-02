@@ -50,6 +50,14 @@ var (
 	leafBundleSize = flag.Int("leaf_bundle_size", 1, "The log-configured number of leaves in each leaf bundle")
 
 	showUI = flag.Bool("show_ui", true, "Set to false to disable the text-based UI")
+
+	hc = &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        256,
+			MaxIdleConnsPerHost: 256,
+			DisableKeepAlives:   false,
+		},
+	}
 )
 
 func main() {
@@ -121,7 +129,7 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	}
 	gen := newLeafGenerator()
 	for i := 0; i < *numWriters; i++ {
-		writers[i] = NewLogWriter(addURL, gen, writeThrottle.tokenChan, errChan)
+		writers[i] = NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan)
 	}
 	return &Hammer{
 		randomReaders: randomReaders,
@@ -257,14 +265,15 @@ func (t *Throttle) Run(ctx context.Context) {
 			tokenCount := t.opsPerSecond
 			timeout := time.After(1 * time.Second)
 		Loop:
-			for i := 0; i < tokenCount; i++ {
+			for i := 0; i < t.opsPerSecond; i++ {
 				select {
 				case t.tokenChan <- true:
+					tokenCount--
 				case <-timeout:
-					t.oversupply = tokenCount - i
 					break Loop
 				}
 			}
+			t.oversupply = tokenCount
 		}
 	}
 }
@@ -389,7 +398,7 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+	resp, err := hc.Do(req.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
