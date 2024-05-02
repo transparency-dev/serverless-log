@@ -416,8 +416,5 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 			klog.Errorf("resp.Body.Close(): %v", err)
 		}
 	}()
-	defer func() {
-		_ = resp.Body.Close()
-	}()
 	return io.ReadAll(resp.Body)
 }
