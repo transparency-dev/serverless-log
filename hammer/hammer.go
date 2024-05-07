@@ -402,6 +402,16 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			klog.Errorf("resp.Body.Close(): %v", err)
+		}
+	}()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read body: %v", err)
+	}
+
 	switch resp.StatusCode {
 	case 404:
 		klog.Infof("Not found: %q", u.String())
@@ -411,10 +421,5 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unexpected http status %q", resp.Status)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			klog.Errorf("resp.Body.Close(): %v", err)
-		}
-	}()
-	return io.ReadAll(resp.Body)
+	return body, nil
 }
