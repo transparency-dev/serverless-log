@@ -59,7 +59,7 @@ type LeafReader struct {
 	throttle   <-chan bool
 	errchan    chan<- error
 	cancel     func()
-	c          tileCache
+	c          leafBundleCache
 }
 
 // Run runs the log reader. This should be called in a goroutine.
@@ -120,7 +120,7 @@ func (r *LeafReader) getLeaf(ctx context.Context, i uint64, logSize uint64) ([]b
 	if l := len(bs); uint64(l) <= br {
 		return nil, fmt.Errorf("huh, short leaf bundle with %d entries, want %d", l, br)
 	}
-	r.c = tileCache{
+	r.c = leafBundleCache{
 		start:  bi * uint64(r.bundleSize),
 		leaves: bs,
 	}
@@ -136,15 +136,15 @@ func (r *LeafReader) Kill() {
 	}
 }
 
-// tileCache stores the results of the last fetched tile. This allows
+// leafBundleCache stores the results of the last fetched tile. This allows
 // readers that read contiguous blocks of leaves to act more like real
 // clients and fetch a tile of 256 leaves once, instead of 256 times.
-type tileCache struct {
+type leafBundleCache struct {
 	start  uint64
 	leaves [][]byte
 }
 
-func (tc tileCache) get(i uint64) []byte {
+func (tc leafBundleCache) get(i uint64) []byte {
 	end := tc.start + uint64(len(tc.leaves))
 	if i >= tc.start && i < end {
 		return tc.leaves[i-tc.start]
