@@ -211,7 +211,15 @@ func (w *LogWriter) Run(ctx context.Context) {
 		}
 		newLeaf := w.gen()
 
-		resp, err := w.hc.Post(w.u.String(), "application/octet-stream", bytes.NewReader(newLeaf))
+		req, err := http.NewRequest(http.MethodPost, w.u.String(), bytes.NewReader(newLeaf))
+		if err != nil {
+			w.errchan <- fmt.Errorf("failed to create request: %v", err)
+			continue
+		}
+		if len(*bearerToken) > 0 {
+			req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *bearerToken))
+		}
+		resp, err := hc.Do(req.WithContext(ctx))
 		if err != nil {
 			w.errchan <- fmt.Errorf("failed to write leaf: %v", err)
 			continue
