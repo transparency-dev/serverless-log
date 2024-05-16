@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -191,6 +192,10 @@ func (h *Hammer) Run(ctx context.Context) {
 				_, _, _, err := h.tracker.Update(ctx)
 				if err != nil {
 					klog.Warning(err)
+					inconsistentErr := client.ErrInconsistency{}
+					if errors.As(err, &inconsistentErr) {
+						klog.Fatalf("Last Good Checkpoint:\n%s\n\nFirst Bad Checkpoint:\n%s\n\n%v", string(inconsistentErr.SmallerRaw), string(inconsistentErr.LargerRaw), inconsistentErr)
+					}
 				}
 				newSize := h.tracker.LatestConsistent.Size
 				if newSize > size {
