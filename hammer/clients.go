@@ -95,7 +95,7 @@ func (r *LeafReader) getLeaf(ctx context.Context, i uint64, logSize uint64) ([]b
 	if i >= logSize {
 		return nil, fmt.Errorf("requested leaf %d >= log size %d", i, logSize)
 	}
-	if cached := r.c.get(i); cached != nil {
+	if cached, _ := r.c.get(i); cached != nil {
 		klog.V(2).Infof("Using cached result for index %d", i)
 		return cached, nil
 	}
@@ -125,7 +125,7 @@ func (r *LeafReader) getLeaf(ctx context.Context, i uint64, logSize uint64) ([]b
 		leaves: bs,
 	}
 
-	return base64.StdEncoding.DecodeString(string(bs[br]))
+	return r.c.get(i)
 }
 
 // Kills this leaf reader at the next opportune moment.
@@ -144,12 +144,13 @@ type leafBundleCache struct {
 	leaves [][]byte
 }
 
-func (tc leafBundleCache) get(i uint64) []byte {
+func (tc leafBundleCache) get(i uint64) ([]byte, error) {
 	end := tc.start + uint64(len(tc.leaves))
 	if i >= tc.start && i < end {
-		return tc.leaves[i-tc.start]
+		leaf := tc.leaves[i-tc.start]
+		return base64.StdEncoding.DecodeString(string(leaf))
 	}
-	return nil
+	return nil, errors.New("not found")
 }
 
 // RandomNextLeaf returns a function that fetches a random leaf available in the tree.
