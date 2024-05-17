@@ -3,7 +3,7 @@ module github.com/transparency-dev/serverless-log
 go 1.21
 
 require (
-	github.com/gdamore/tcell/v2 v2.7.1
+	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/google/go-cmp v0.6.0
 	github.com/rivo/tview v0.0.0-20240413115534-b0d41c484b95
 	github.com/transparency-dev/formats v0.0.0-20230914071414-5732692f1e50
