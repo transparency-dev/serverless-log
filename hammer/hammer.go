@@ -38,6 +38,7 @@ import (
 
 var (
 	logURL        = flag.String("log_url", "", "Log storage root URL, e.g. https://log.server/and/path/")
+	bearerToken   = flag.String("bearer_token", "", "The bearer token for auth. For GCP this is the result of `gcloud auth print-identity-token`")
 	logPubKeyFile = flag.String("log_public_key", "", "Location of log public key file. If unset, uses the contents of the SERVERLESS_LOG_PUBLIC_KEY environment variable")
 	origin        = flag.String("origin", "", "Expected first line of checkpoints from log")
 
@@ -402,6 +403,9 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+	if len(*bearerToken) > 0 {
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *bearerToken))
 	}
 	resp, err := hc.Do(req.WithContext(ctx))
 	if err != nil {
