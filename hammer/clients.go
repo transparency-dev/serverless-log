@@ -85,7 +85,7 @@ func (r *LeafReader) Run(ctx context.Context) {
 		klog.V(2).Infof("LeafReader getting %d", i)
 		_, err := r.getLeaf(ctx, i, size)
 		if err != nil {
-			r.errchan <- fmt.Errorf("failed to get leaf: %v", err)
+			r.errchan <- fmt.Errorf("failed to get leaf %d: %v", i, err)
 		}
 	}
 }
