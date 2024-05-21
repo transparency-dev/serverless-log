@@ -59,6 +59,7 @@ var (
 			MaxIdleConnsPerHost: 256,
 			DisableKeepAlives:   false,
 		},
+		Timeout: 5 * time.Second,
 	}
 )
 
@@ -129,7 +130,7 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	for i := 0; i < *numReadersFull; i++ {
 		fullReaders[i] = NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
-	gen := newLeafGenerator()
+	gen := newLeafGenerator(tracker.LatestConsistent.Size)
 	for i := 0; i < *numWriters; i++ {
 		writers[i] = NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan)
 	}
@@ -207,11 +208,11 @@ func (h *Hammer) Run(ctx context.Context) {
 	}()
 }
 
-func newLeafGenerator() func() []byte {
+func newLeafGenerator(start uint64) func() []byte {
 	const dupChance = 0.1
-	var g int64
+	var g uint64 = start
 	return func() []byte {
-		var r int64
+		var r uint64
 		if rand.Float64() <= dupChance {
 			// This one will actually be unique, but the next iteration will
 			// duplicate it. In future, this duplication could be randomly
