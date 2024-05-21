@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -50,6 +51,7 @@ var (
 	numWriters           = flag.Int("num_writers", 0, "The number of independent write tasks to run")
 
 	leafBundleSize = flag.Int("leaf_bundle_size", 1, "The log-configured number of leaves in each leaf bundle")
+	leafMinSize    = flag.Int("leaf_min_size", 0, "Minimum size in bytes of individual leaves")
 
 	showUI = flag.Bool("show_ui", true, "Set to false to disable the text-based UI")
 
@@ -130,7 +132,7 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	for i := 0; i < *numReadersFull; i++ {
 		fullReaders[i] = NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
 	}
-	gen := newLeafGenerator(tracker.LatestConsistent.Size)
+	gen := newLeafGenerator(tracker.LatestConsistent.Size, *leafMinSize)
 	for i := 0; i < *numWriters; i++ {
 		writers[i] = NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan)
 	}
@@ -208,22 +210,28 @@ func (h *Hammer) Run(ctx context.Context) {
 	}()
 }
 
-func newLeafGenerator(start uint64) func() []byte {
+func genLeaf(n uint64, minLeafSize int) []byte {
+	filler := make([]byte, minLeafSize/2)
+	_, _ = crand.Read(filler)
+	return []byte(fmt.Sprintf("%x %d", filler, n))
+}
+
+func newLeafGenerator(n uint64, minLeafSize int) func() []byte {
 	const dupChance = 0.1
-	var g uint64 = start
+	nextLeaf := genLeaf(n, minLeafSize)
 	return func() []byte {
-		var r uint64
 		if rand.Float64() <= dupChance {
 			// This one will actually be unique, but the next iteration will
 			// duplicate it. In future, this duplication could be randomly
 			// selected to include really old leaves too, to test long-term
 			// deduplication in the log (if it supports  that).
-			r = g
-		} else {
-			r = g
-			g++
+			return nextLeaf
 		}
-		return []byte(fmt.Sprintf("%d", r))
+
+		n++
+		r := nextLeaf
+		nextLeaf = genLeaf(n, minLeafSize)
+		return r
 	}
 }
 
