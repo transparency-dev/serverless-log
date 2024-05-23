@@ -211,6 +211,8 @@ func (h *Hammer) Run(ctx context.Context) {
 }
 
 func genLeaf(n uint64, minLeafSize int) []byte {
+	// Make a slice with half the number of requested bytes since we'll
+	// hex-encode them below which gets us back up to the full amount.
 	filler := make([]byte, minLeafSize/2)
 	_, _ = crand.Read(filler)
 	return []byte(fmt.Sprintf("%x %d", filler, n))
