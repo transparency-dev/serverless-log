@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -37,8 +38,13 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func init() {
+	flag.Var(&logURL, "log_url", "Log storage root URL (can be specified multiple times), e.g. https://log.server/and/path/")
+}
+
 var (
-	logURL        = flag.String("log_url", "", "Log storage root URL, e.g. https://log.server/and/path/")
+	logURL multiStringFlag
+
 	bearerToken   = flag.String("bearer_token", "", "The bearer token for auth. For GCP this is the result of `gcloud auth print-identity-token`")
 	logPubKeyFile = flag.String("log_public_key", "", "Location of log public key file. If unset, uses the contents of the SERVERLESS_LOG_PUBLIC_KEY environment variable")
 	origin        = flag.String("origin", "", "Expected first line of checkpoints from log")
@@ -65,6 +71,27 @@ var (
 	}
 )
 
+type roundRobinFetcher struct {
+	sync.Mutex
+	idx int
+	f   []client.Fetcher
+}
+
+func (rr *roundRobinFetcher) next() client.Fetcher {
+	rr.Lock()
+	defer rr.Unlock()
+
+	f := rr.f[rr.idx]
+	rr.idx = (rr.idx + 1) % len(rr.f)
+
+	return f
+}
+
+func (rr *roundRobinFetcher) Fetch(ctx context.Context, path string) ([]byte, error) {
+	f := rr.next()
+	return f(ctx, path)
+}
+
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
@@ -76,25 +103,31 @@ func main() {
 		klog.Exitf("failed to read log public key: %v", err)
 	}
 
-	u := *logURL
-	if len(u) == 0 {
+	if len(logURL) == 0 {
 		klog.Exitf("--log_url must be provided")
 	}
-	// url must reference a directory, by definition
-	if !strings.HasSuffix(u, "/") {
-		u += "/"
-	}
 
-	rootURL, err := url.Parse(u)
-	if err != nil {
-		klog.Exitf("Invalid log URL: %v", err)
+	var rootURL *url.URL
+	fetchers := []client.Fetcher{}
+	for _, s := range logURL {
+		// url must reference a directory, by definition
+		if !strings.HasSuffix(s, "/") {
+			s += "/"
+		}
+
+		rootURL, err = url.Parse(s)
+		if err != nil {
+			klog.Exitf("Invalid log URL: %v", err)
+		}
+		fetchers = append(fetchers, newFetcher(rootURL))
+
 	}
+	f := roundRobinFetcher{f: fetchers}
 
 	var cpRaw []byte
-	f := newFetcher(rootURL)
-	cons := client.UnilateralConsensus(f)
+	cons := client.UnilateralConsensus(f.Fetch)
 	hasher := rfc6962.DefaultHasher
-	tracker, err := client.NewLogStateTracker(ctx, f, hasher, cpRaw, logSigV, *origin, cons)
+	tracker, err := client.NewLogStateTracker(ctx, f.Fetch, hasher, cpRaw, logSigV, *origin, cons)
 	if err != nil {
 		klog.Exitf("Failed to create LogStateTracker: %v", err)
 	}
@@ -108,7 +141,7 @@ func main() {
 	if err != nil {
 		klog.Exitf("Failed to create add URL: %v", err)
 	}
-	hammer := NewHammer(&tracker, f, addURL)
+	hammer := NewHammer(&tracker, f.Fetch, addURL)
 	hammer.Run(ctx)
 
 	if *showUI {
@@ -443,4 +476,15 @@ func readHTTP(ctx context.Context, u *url.URL) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected http status %q", resp.Status)
 	}
 	return body, nil
+}
+
+type multiStringFlag []string
+
+func (ms *multiStringFlag) String() string {
+	return strings.Join(*ms, ",")
+}
+
+func (ms *multiStringFlag) Set(w string) error {
+	*ms = append(*ms, w)
+	return nil
 }
