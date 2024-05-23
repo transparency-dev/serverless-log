@@ -308,6 +308,7 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 	// Log view box
 	logView := tview.NewTextView()
 	logView.ScrollToEnd()
+	logView.SetMaxLines(10000)
 	grid.AddItem(logView, 1, 0, 1, 1, 0, 0, false)
 	if err := flag.Set("logtostderr", "false"); err != nil {
 		klog.Exitf("Failed to set flag: %v", err)
