@@ -77,17 +77,18 @@ type roundRobinFetcher struct {
 	f   []client.Fetcher
 }
 
-func (rr *roundRobinFetcher) Add(f client.Fetcher) {
-	rr.f = append(rr.f, f)
-}
-
-func (rr *roundRobinFetcher) Fetch(ctx context.Context, path string) ([]byte, error) {
+func (rr *roundRobinFetcher) next() client.Fetcher {
 	rr.Lock()
 	defer rr.Unlock()
 
-	klog.V(2).Infof("Using fetcher [%d] to fetch %q", rr.idx, path)
 	f := rr.f[rr.idx]
 	rr.idx = (rr.idx + 1) % len(rr.f)
+
+	return f
+}
+
+func (rr *roundRobinFetcher) Fetch(ctx context.Context, path string) ([]byte, error) {
+	f := rr.next()
 	return f(ctx, path)
 }
 
@@ -106,8 +107,8 @@ func main() {
 		klog.Exitf("--log_url must be provided")
 	}
 
-	f := roundRobinFetcher{}
 	var rootURL *url.URL
+	fetchers := []client.Fetcher{}
 	for _, s := range logURL {
 		// url must reference a directory, by definition
 		if !strings.HasSuffix(s, "/") {
@@ -118,9 +119,11 @@ func main() {
 		if err != nil {
 			klog.Exitf("Invalid log URL: %v", err)
 		}
-		f.Add(newFetcher(rootURL))
+		fetchers = append(fetchers, newFetcher(rootURL))
 
 	}
+	f := roundRobinFetcher{f: fetchers}
+
 	var cpRaw []byte
 	cons := client.UnilateralConsensus(f.Fetch)
 	hasher := rfc6962.DefaultHasher
