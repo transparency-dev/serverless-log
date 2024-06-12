@@ -156,19 +156,15 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 	writeThrottle := NewThrottle(*maxWriteOpsPerSecond)
 	errChan := make(chan error, 20)
 
-	randomReaders := make([]*LeafReader, *numReadersRandom)
-	fullReaders := make([]*LeafReader, *numReadersFull)
-	writers := make([]*LogWriter, *numWriters)
-	for i := 0; i < *numReadersRandom; i++ {
-		randomReaders[i] = NewLeafReader(tracker, f, RandomNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
-	}
-	for i := 0; i < *numReadersFull; i++ {
-		fullReaders[i] = NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
-	}
 	gen := newLeafGenerator(tracker.LatestConsistent.Size, *leafMinSize)
-	for i := 0; i < *numWriters; i++ {
-		writers[i] = NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan)
-	}
+	randomReaders := newWorkerPool(func() worker {
+		return NewLeafReader(tracker, f, RandomNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
+	})
+	fullReaders := newWorkerPool(func() worker {
+		return NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
+	})
+	writers := newWorkerPool(func() worker { return NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan) })
+
 	return &Hammer{
 		randomReaders: randomReaders,
 		fullReaders:   fullReaders,
@@ -181,9 +177,9 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 }
 
 type Hammer struct {
-	randomReaders []*LeafReader
-	fullReaders   []*LeafReader
-	writers       []*LogWriter
+	randomReaders workerPool
+	fullReaders   workerPool
+	writers       workerPool
 	readThrottle  *Throttle
 	writeThrottle *Throttle
 	tracker       *client.LogStateTracker
@@ -192,14 +188,14 @@ type Hammer struct {
 
 func (h *Hammer) Run(ctx context.Context) {
 	// Kick off readers & writers
-	for _, r := range h.randomReaders {
-		go r.Run(ctx)
+	for i := 0; i < *numReadersRandom; i++ {
+		h.randomReaders.Grow(ctx)
 	}
-	for _, r := range h.fullReaders {
-		go r.Run(ctx)
+	for i := 0; i < *numReadersFull; i++ {
+		h.fullReaders.Grow(ctx)
 	}
-	for _, w := range h.writers {
-		go w.Run(ctx)
+	for i := 0; i < *numWriters; i++ {
+		h.writers.Grow(ctx)
 	}
 
 	// Set up logging for any errors
@@ -352,7 +348,7 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 	klog.SetOutput(logView)
 
 	helpView := tview.NewTextView()
-	helpView.SetText("+/- to increase/decrease read load\n>/< to increase/decrease write load")
+	helpView.SetText("+/- to increase/decrease read load\n>/< to increase/decrease write load\nw/W to increase/decrease workers")
 	grid.AddItem(helpView, 2, 0, 1, 1, 0, 0, false)
 
 	app := tview.NewApplication()
@@ -383,6 +379,16 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 		case '<':
 			klog.Info("Decreasing the write operations per second")
 			hammer.writeThrottle.Decrease()
+		case 'w':
+			klog.Info("Increasing the number of workers")
+			hammer.randomReaders.Grow(ctx)
+			hammer.fullReaders.Grow(ctx)
+			hammer.writers.Grow(ctx)
+		case 'W':
+			klog.Info("Decreasing the number of workers")
+			hammer.randomReaders.Shrink(ctx)
+			hammer.fullReaders.Shrink(ctx)
+			hammer.writers.Shrink(ctx)
 		}
 		return event
 	})
