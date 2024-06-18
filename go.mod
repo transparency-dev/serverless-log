@@ -10,7 +10,7 @@ require (
 	github.com/transparency-dev/merkle v0.0.2
 	golang.org/x/mod v0.18.0
 	golang.org/x/sync v0.7.0
-	k8s.io/klog/v2 v2.120.1
+	k8s.io/klog/v2 v2.130.0
 )
 
 require (
