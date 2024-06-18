@@ -9,10 +9,10 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     - name: Build leaf_validator
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: "{{defaultContext}}:deploy/github/log/leaf_validator"
     - name: Build sequence_and_integrate
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: "{{defaultContext}}:deploy/github/log/sequence_and_integrate"
