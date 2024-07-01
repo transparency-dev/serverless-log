@@ -36,7 +36,7 @@ import (
 // NewLeafReader creates a LeafReader.
 // The next function provides a strategy for which leaves will be read.
 // Custom implementations can be passed, or use RandomNextLeaf or MonotonicallyIncreasingNextLeaf.
-func NewLeafReader(tracker *client.LogStateTracker, f client.Fetcher, next func(uint64) uint64, bundleSize int, throttle <-chan bool, errchan chan<- error) *LeafReader {
+func NewLeafReader(tracker *client.LogStateTracker, f client.Fetcher, next func(uint64) uint64, bundleSize int, throttle <-chan bool, errchan chan<- error, leafchan chan<- Leaf) *LeafReader {
 	if bundleSize <= 0 {
 		panic("bundleSize must be > 0")
 	}
@@ -47,6 +47,7 @@ func NewLeafReader(tracker *client.LogStateTracker, f client.Fetcher, next func(
 		bundleSize: bundleSize,
 		throttle:   throttle,
 		errchan:    errchan,
+		leafchan:   leafchan,
 	}
 }
 
@@ -58,6 +59,7 @@ type LeafReader struct {
 	bundleSize int
 	throttle   <-chan bool
 	errchan    chan<- error
+	leafchan   chan<- Leaf
 	cancel     func()
 	c          leafBundleCache
 }
@@ -83,9 +85,13 @@ func (r *LeafReader) Run(ctx context.Context) {
 			continue
 		}
 		klog.V(2).Infof("LeafReader getting %d", i)
-		_, err := r.getLeaf(ctx, i, size)
+		data, err := r.getLeaf(ctx, i, size)
 		if err != nil {
 			r.errchan <- fmt.Errorf("failed to get leaf %d: %v", i, err)
+		}
+		r.leafchan <- Leaf{
+			Index: uint64(i),
+			Data:  data,
 		}
 	}
 }
@@ -177,13 +183,14 @@ func MonotonicallyIncreasingNextLeaf() func(uint64) uint64 {
 // NewLogWriter creates a LogWriter.
 // u is the URL of the write endpoint for the log.
 // gen is a function that generates new leaves to add.
-func NewLogWriter(hc *http.Client, u *url.URL, gen func() []byte, throttle <-chan bool, errchan chan<- error) *LogWriter {
+func NewLogWriter(hc *http.Client, u *url.URL, gen func() []byte, throttle <-chan bool, errchan chan<- error, leafchan chan<- Leaf) *LogWriter {
 	return &LogWriter{
 		hc:       hc,
 		u:        u,
 		gen:      gen,
 		throttle: throttle,
 		errchan:  errchan,
+		leafchan: leafchan,
 	}
 }
 
@@ -194,6 +201,7 @@ type LogWriter struct {
 	gen      func() []byte
 	throttle <-chan bool
 	errchan  chan<- error
+	leafchan chan<- Leaf
 	cancel   func()
 }
 
@@ -245,6 +253,10 @@ func (w *LogWriter) Run(ctx context.Context) {
 			continue
 		}
 
+		w.leafchan <- Leaf{
+			Index: uint64(index),
+			Data:  newLeaf,
+		}
 		klog.V(2).Infof("Wrote leaf at index %d", index)
 	}
 }
@@ -255,4 +267,9 @@ func (w *LogWriter) Kill() {
 	if w.cancel != nil {
 		w.cancel()
 	}
+}
+
+type Leaf struct {
+	Index uint64
+	Data  []byte
 }

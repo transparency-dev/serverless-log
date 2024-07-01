@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/rivo/tview"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/client"
@@ -151,20 +152,68 @@ func main() {
 	}
 }
 
+func NewLeafConsumer() *LeafConsumer {
+	lookup, err := lru.New[string, uint64](1024)
+	if err != nil {
+		panic(err)
+	}
+	return &LeafConsumer{
+		leafchan: make(chan Leaf, 256),
+		lookup:   lookup,
+	}
+}
+
+// LeafConsumer eats leaves from the channel and performs analysis
+// that is somewhat global. At the moment this just checks how many
+// times it sees a duplicate leaf (i.e. a leaf that appears at multiple
+// indices). This could be extended to measure integration time etc.
+type LeafConsumer struct {
+	leafchan       chan Leaf
+	lookup         *lru.Cache[string, uint64]
+	duplicateCount uint64
+}
+
+func (c *LeafConsumer) Run(ctx context.Context) {
+	defer close(c.leafchan)
+	for {
+		select {
+		case <-ctx.Done(): //context cancelled
+			return
+		case l := <-c.leafchan:
+			strData := string(l.Data)
+			if oIdx, found := c.lookup.Get(strData); found {
+				if oIdx != l.Index {
+					c.duplicateCount++
+					klog.V(2).Infof("Found two indices for data %q: (%d, %d)", strData, oIdx, l.Index)
+				}
+			} else {
+				c.lookup.Add(strData, l.Index)
+			}
+		}
+	}
+}
+
+func (c *LeafConsumer) String() string {
+	return fmt.Sprintf("Duplicates: %d", c.duplicateCount)
+}
+
 func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.URL) *Hammer {
 	readThrottle := NewThrottle(*maxReadOpsPerSecond)
 	writeThrottle := NewThrottle(*maxWriteOpsPerSecond)
 	errChan := make(chan error, 20)
+	leafConsumer := NewLeafConsumer()
+	go leafConsumer.Run(context.Background())
 
 	gen := newLeafGenerator(tracker.LatestConsistent.Size, *leafMinSize)
 	randomReaders := newWorkerPool(func() worker {
-		return NewLeafReader(tracker, f, RandomNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
+		return NewLeafReader(tracker, f, RandomNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan, leafConsumer.leafchan)
 	})
 	fullReaders := newWorkerPool(func() worker {
-		return NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan)
+		return NewLeafReader(tracker, f, MonotonicallyIncreasingNextLeaf(), *leafBundleSize, readThrottle.tokenChan, errChan, leafConsumer.leafchan)
 	})
-	writers := newWorkerPool(func() worker { return NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan) })
-
+	writers := newWorkerPool(func() worker {
+		return NewLogWriter(hc, addURL, gen, writeThrottle.tokenChan, errChan, leafConsumer.leafchan)
+	})
 	return &Hammer{
 		randomReaders: randomReaders,
 		fullReaders:   fullReaders,
@@ -172,6 +221,7 @@ func NewHammer(tracker *client.LogStateTracker, f client.Fetcher, addURL *url.UR
 		readThrottle:  readThrottle,
 		writeThrottle: writeThrottle,
 		tracker:       tracker,
+		leafConsumer:  leafConsumer,
 		errChan:       errChan,
 	}
 }
@@ -183,6 +233,7 @@ type Hammer struct {
 	readThrottle  *Throttle
 	writeThrottle *Throttle
 	tracker       *client.LogStateTracker
+	leafConsumer  *LeafConsumer
 	errChan       chan error
 }
 
@@ -359,7 +410,7 @@ func hostUI(ctx context.Context, hammer *Hammer) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				text := fmt.Sprintf("Read: %s\nWrite: %s", hammer.readThrottle.String(), hammer.writeThrottle.String())
+				text := fmt.Sprintf("Read: %s\nWrite: %s\nAnalysis: %s", hammer.readThrottle.String(), hammer.writeThrottle.String(), hammer.leafConsumer.String())
 				statusView.SetText(text)
 				app.Draw()
 			}
