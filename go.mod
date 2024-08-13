@@ -1,6 +1,6 @@
 module github.com/transparency-dev/serverless-log
 
-go 1.21
+go 1.21.13
 
 require (
 	github.com/gdamore/tcell/v2 v2.7.4
