@@ -15,4 +15,4 @@ jobs:
         go-version: ${{ matrix.go-version }}
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
     - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
-    - uses: codecov/codecov-action@1e68e06f1dbfde0e4cefc87efeba9e4643565303 # v5.1.2
+    - uses: codecov/codecov-action@5a605bd92782ce0810fa3b8acc235c921b497052 # v5.2.0
