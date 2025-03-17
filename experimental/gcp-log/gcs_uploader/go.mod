@@ -1,6 +1,8 @@
 module github.com/gcp_serverless_example_module
 
-go 1.22.7
+go 1.24.0
+
+toolchain go1.24.1
 
 require cloud.google.com/go/storage v1.33.0
 
