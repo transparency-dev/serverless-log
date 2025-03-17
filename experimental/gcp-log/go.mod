@@ -1,7 +1,8 @@
 module github.com/gcp_serverless_module
 
-go 1.22.7
-toolchain go1.23.7
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
 	cloud.google.com/go/kms v1.15.5
