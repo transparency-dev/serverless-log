@@ -77,28 +77,35 @@ func FetchCheckpoint(ctx context.Context, f Fetcher, v note.Verifier, origin str
 // Since the tiles commit only to immutable nodes, the job of building proofs is slightly
 // more complex as proofs can touch "ephemeral" nodes, so these need to be synthesized.
 type ProofBuilder struct {
-	cp        log.Checkpoint
+	treeSize  uint64
 	nodeCache nodeCache
 	h         compact.HashFn
 }
 
-// NewProofBuilder creates a new ProofBuilder object for a given tree size.
+// NewProofBuilderForsize returns a new ProofBuilding for the given tree size.
+//
+// Unlike NewProofBuilder below, no correctness checking of the root hash for the given tree size is performed.
+func NewProofBuilderForSize(ctx context.Context, size uint64, h compact.HashFn, f Fetcher) *ProofBuilder {
+	tf := newTileFetcher(f, size)
+	return &ProofBuilder{
+		treeSize:  size,
+		nodeCache: newNodeCache(tf, size),
+		h:         h,
+	}
+}
+
 // The returned ProofBuilder can be re-used for proofs related to a given tree size, but
 // it is not thread-safe and should not be accessed concurrently.
 func NewProofBuilder(ctx context.Context, cp log.Checkpoint, h compact.HashFn, f Fetcher) (*ProofBuilder, error) {
-	tf := newTileFetcher(f, cp.Size)
-	pb := &ProofBuilder{
-		cp:        cp,
-		nodeCache: newNodeCache(tf, cp.Size),
-		h:         h,
-	}
+	pb := NewProofBuilderForSize(ctx, cp.Size, h, f)
+
 	// Can't re-create the root of a zero size checkpoint other than by convention,
 	// so return early here in that case.
 	if cp.Size == 0 {
 		return pb, nil
 	}
 
-	hashes, err := FetchRangeNodes(ctx, cp.Size, tf)
+	hashes, err := FetchRangeNodes(ctx, cp.Size, pb.nodeCache.getTile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch range nodes: %w", err)
 	}
@@ -127,7 +134,7 @@ func NewProofBuilder(ctx context.Context, cp log.Checkpoint, h compact.HashFn, f
 // This function uses the passed-in function to retrieve tiles containing any log tree
 // nodes necessary to build the proof.
 func (pb *ProofBuilder) InclusionProof(ctx context.Context, index uint64) ([][]byte, error) {
-	nodes, err := proof.Inclusion(index, pb.cp.Size)
+	nodes, err := proof.Inclusion(index, pb.treeSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate inclusion proof node list: %w", err)
 	}
