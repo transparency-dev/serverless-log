@@ -25,7 +25,9 @@ import (
 	"testing"
 
 	"github.com/transparency-dev/formats/log"
+	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/compact"
+	"github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"github.com/transparency-dev/serverless-log/api"
 	"golang.org/x/mod/sumdb/note"
@@ -347,4 +349,46 @@ func TestHandleZeroRoot(t *testing.T) {
 	if _, err := NewProofBuilder(context.Background(), zeroCP, rfc6962.DefaultHasher.HashChildren, testLogFetcher); err != nil {
 		t.Fatalf("NewProofBuilder: %v", err)
 	}
+}
+
+func doTestProofBuilder(t *testing.T, pb *ProofBuilder, h merkle.LogHasher) {
+	t.Helper()
+	for _, from := range testCheckpoints {
+		if from.Size > pb.treeSize {
+			return
+		}
+		cp, err := pb.ConsistencyProof(t.Context(), from.Size, pb.treeSize)
+		if err != nil {
+			t.Fatalf("pb.ConsistencyProof(%d, %d): %v", from.Size, pb.treeSize, err)
+		}
+		if err := proof.VerifyConsistency(h, from.Size, pb.treeSize, cp, from.Hash, testCheckpoints[pb.treeSize].Hash); err != nil {
+			t.Fatalf("pb generated invalid consistency proof between %d and %d: %v", from.Size, pb.treeSize, err)
+		}
+	}
+	for i := range pb.treeSize {
+		leaf, err := GetLeaf(t.Context(), testLogFetcher, i)
+		if err != nil {
+			t.Fatalf("GetLeaf(%d): %v", i, err)
+		}
+		ip, err := pb.InclusionProof(t.Context(), i)
+		if err != nil {
+			t.Fatalf("pb.InclusionProof(%d): %v", i, err)
+		}
+		if err := proof.VerifyInclusion(h, i, pb.treeSize, h.HashLeaf(leaf), ip, testCheckpoints[pb.treeSize].Hash); err != nil {
+			t.Fatalf("pb generated invalid inclusion proof for leaf %d: %v", i, err)
+		}
+	}
+}
+
+func TestProofBuilder(t *testing.T) {
+	pb, err := NewProofBuilder(t.Context(), testCheckpoints[len(testCheckpoints)-1], rfc6962.DefaultHasher.HashChildren, testLogFetcher)
+	if err != nil {
+		t.Fatalf("NewProofBuilder: %v", err)
+	}
+	doTestProofBuilder(t, pb, rfc6962.DefaultHasher)
+}
+
+func TestProofBuilderForSize(t *testing.T) {
+	pb := NewProofBuilderForSize(t.Context(), testCheckpoints[len(testCheckpoints)-1].Size, rfc6962.DefaultHasher.HashChildren, testLogFetcher)
+	doTestProofBuilder(t, pb, rfc6962.DefaultHasher)
 }
