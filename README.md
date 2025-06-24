@@ -1,5 +1,12 @@
 # Serverless Log
 
+> [!WARNING]
+> This repository should not be used for new logs.
+> New logs should be built using the [tlog-tiles](https://c2sp.org/tlog-tiles) API,
+> which is slightly different than the layout used by this repository.
+> We recommend using [Tessera](https://github.com/transparency-dev/tessera) with
+> the POSIX driver for anyone that would have otherwise used this repo.
+
 This is some experimental tooling which allows for the maintenance and querying
 of a log represented by tiles & files. These tools are built upon components
 from the transparency-dev repos (e.g. compact ranges from the
