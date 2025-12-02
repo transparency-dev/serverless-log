@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.1
 
 require (
-	github.com/gdamore/tcell/v2 v2.12.2
+	github.com/gdamore/tcell/v2 v2.13.1
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/rivo/tview v0.42.0
