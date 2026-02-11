@@ -9,7 +9,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/rivo/tview v0.42.0
-	github.com/transparency-dev/formats v0.0.0-20230914071414-5732692f1e50
+	github.com/transparency-dev/formats v0.1.0
 	github.com/transparency-dev/merkle v0.0.2
 	golang.org/x/mod v0.33.0
 	golang.org/x/sync v0.19.0
