@@ -1,8 +1,6 @@
 module github.com/transparency-dev/serverless-log
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.25.0
 
 require (
 	github.com/gdamore/tcell/v2 v2.13.8
@@ -12,8 +10,8 @@ require (
 	github.com/transparency-dev/formats v0.1.0
 	github.com/transparency-dev/merkle v0.0.2
 	golang.org/x/mod v0.33.0
-	golang.org/x/sync v0.19.0
-	k8s.io/klog/v2 v2.130.1
+	golang.org/x/sync v0.20.0
+	k8s.io/klog/v2 v2.140.0
 )
 
 require (
